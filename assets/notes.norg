@@ -1,0 +1,20 @@
+* Tools
+  - {https://github.com/netwide-assembler/nasm}[Nasm]
+  - {https://www.rust-lang.org/}[Rust]
+
+* References
+  - {https://en.wikipedia.org/wiki/BSD_licenses}[BSD License]
+  - {https://en.wikipedia.org/wiki/MIT_License}[MIT License]
+  - Linkers
+  ~~ {https://learn.microsoft.com/en-us/cpp/build/reference/linker-options?view=msvc-170}[MSVC (LINK.exe)] ~ Windows
+  ~~ {https://developer.apple.com/forums/tags/linker}[Linker (dyld)] ~ Apple
+  ~~ {https://ftp.gnu.org/old-gnu/Manuals/ld-2.9.1/html_mono/ld.html}[GNU Linker] ~ Linux
+  --- {https://linux.die.net/man/1/ld}[Man page]
+  - Langueges
+  ~~ Rust
+  ~~ Nim
+  ~~ Python
+  ~~ Odin
+  ~~ Zig
+  ~~ Go
+  ~~ C++

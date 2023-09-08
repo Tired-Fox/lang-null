@@ -238,7 +238,7 @@ def collect_and_write(out_dir: str, links: list[tuple[Name, Url]]):
     for link in links:
         with (path / link[0]).with_suffix(".svg").open("wb") as output:
             print("Generating badge:", (path / link[0]).with_suffix(".svg"))
-            data = requests.get(link[1]).content
+            data = requests.get(link[1], verify=False).content
             output.write(data)
 
 
@@ -303,10 +303,10 @@ class Badges:
                 for link in result:
                     with (path / link[0]).with_suffix(".svg").open("wb") as output:
                         print("Generating badge:", (path / link[0]).with_suffix(".svg"))
-                        data = requests.get(link[1]).content
+                        data = requests.get(link[1], verify=False).content
                         output.write(data)
             else:
                 with (path / result[0]).with_suffix(".svg").open("wb") as output:
                     print("Generating badge:", (path / result[0]).with_suffix(".svg"))
-                    data = requests.get(result[1]).content
+                    data = requests.get(result[1], verify=False).content
                     output.write(data)

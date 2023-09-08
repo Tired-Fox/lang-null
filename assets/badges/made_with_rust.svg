@@ -1,13 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="163.75"
-    height="28" role="img" aria-label="MADE WITH: PYTHON">
-    <title>MADE WITH: PYTHON</title>
+    height="28" role="img" aria-label="MADE WITH: RUST">
+    <title>MADE WITH: RUST</title>
     <g shape-rendering="crispEdges">
         <rect width="88.25" height="28" fill="#ef4041" />
         <rect x="88.25" width="75.5" height="28" fill="#c1282d" />
     </g>
     <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif"
         text-rendering="geometricPrecision" font-size="100">
-
         <text transform="scale(.1)" x="434.25" y="175" textLength="712.5" fill="#fff">MADE WITH</text>
         <text transform="scale(.1)" x="1150" y="175" textLength="350" fill="#fff" font-weight="bold">
             RUST </text>
