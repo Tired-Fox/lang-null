@@ -1,0 +1,48 @@
+* Lexer
+  The core idea is that the list of tokens is an index into other lists. Duplicate data is reduced, and instead
+  duplicate code is a pointer to a already constructed object. So all data is created once, non duplicated, and
+  the tokens themselfs reference the data. The most the tokeninfo has is indexes into other arrays.
+
+** Types
+    ~ */Token: usize/*: Index into list of TokenInfo 
+    ~ */\[TokenInfo\]/*: List of important token information
+    -- */kind: TokenKind/*: Enum of all the kinds of tokens 
+    -- */line: usize/*: Index into the list of source lines
+    -- */column: usize/*: Offset in the tokens line where the token starts
+   -- */payload: usize/*: Index into identifiers, literals, tokens. It can also be the length of the error in
+      the source
+    ~ */IdentInfo: \[String\]/*: List of unique string identifiers
+    ~ */IdentMap: Map\<String, usize\>/*: Unique identifier index map
+    ~ */LiteralNumber: \[String\]/* - List of integer literals
+    ~~ All support:
+    --- scientific notation: `(?:e[-+]?\d+)?`
+    ---- ex: `e+3` | `e-3`
+    --- Negative. Leading `-` as long as next is digit
+    --- Decimal syntax with `0.0`. Only occures once
+    ~~ Format:
+    --- hex: `0x[0-9a-fA-F_]+`
+    --- binary: `0b[01_]+`
+    --- octal: `0o[0-7_]+`
+    --- decimal: `[0-9_]+`
+    ~ */LiteralString: \[String\]/*` - List of string literals
+    ~~ Double quote `"`
+    ~~ Single quote `'`
+    ~ */TokenKind/*:
+    -- Symbol:
+    @code
+            <<< >>> << >> < > = <= >= == != ! && || & | ^ ^= |= &= <=>
+            ~ ~= <<= >>= := + - += -= / /= * *= % %= @ : , . ? \\ ; --
+            [ ] ( ) { }
+    @end
+    -- Keyword
+    @code
+        let, fn, type, if, else, elif, return, break, continue, for, while, in,
+        exit, match, and, or, not, is, true, false, pub, import, const, enum, struct
+    @end
+    -- Identifier
+    -- NumberLiteral
+    -- StringLiteral
+    -- RealLiteral
+    -- TypeLiteral
+    -- Error
+    -- EOF
