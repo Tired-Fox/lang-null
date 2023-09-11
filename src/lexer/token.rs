@@ -240,6 +240,17 @@ mod tests {
     }
 }
 
+#[derive(Debug)]
+pub struct ErrorInfo {
+    pub size: usize,
+    pub message: String,
+}
+impl ErrorInfo {
+    pub fn new(size: usize, message: String) -> ErrorInfo {
+        ErrorInfo { size, message }
+    }
+}
+
 pub struct NumberLiteral;
 impl NumberLiteral {
     pub fn verify(value: &String) -> bool {

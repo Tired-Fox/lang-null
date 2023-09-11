@@ -21,4 +21,5 @@ fn main() {
     println!("{:?}", lexer.identifiers);
     println!("{:?}", lexer.literal_numbers);
     println!("{:?}", lexer.literal_strings);
+    println!("{:?}", lexer.errors);
 }

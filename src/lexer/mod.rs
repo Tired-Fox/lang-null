@@ -5,7 +5,7 @@ pub mod token;
 
 use token::{Token, TokenInfo, TokenKind};
 
-use self::token::{NumberLiteral, TokenKeyword, TokenLiteral, TokenSymbol};
+use self::token::{ErrorInfo, NumberLiteral, TokenKeyword, TokenLiteral, TokenSymbol};
 
 /// Information for location of a line in source
 #[derive(Debug, Clone, Copy)]
@@ -34,6 +34,8 @@ pub struct Lexer {
     pub literal_numbers: Vec<String>,
     pub literal_strings: Vec<String>,
 
+    pub errors: Vec<ErrorInfo>,
+
     ident_map: HashMap<String, usize>,
     pub identifiers: Vec<String>,
 }
@@ -46,6 +48,8 @@ impl Lexer {
     pub fn new(path: &str) -> Lexer {
         Lexer {
             buffer: Lexer::read_file(path).chars().collect(),
+            errors: Vec::new(),
+
             lines: Vec::new(),
             column: 0,
 
@@ -145,9 +149,17 @@ impl Lexer {
         }
     }
 
+    fn get_start(&self) -> usize {
+        if self.column == 0 {
+            self.column + 1
+        } else {
+            self.column
+        }
+    }
+
     fn keyword_or_ident(&mut self) {
         let mut value = String::new();
-        let start = self.column;
+        let start = self.get_start();
 
         loop {
             match self.peek() {
@@ -166,8 +178,15 @@ impl Lexer {
             self.token_info.push(TokenInfo::new(
                 TokenKind::Error,
                 self.lines.len(),
-                self.column,
+                self.get_start(),
+                self.errors.len(),
+            ));
+            self.errors.push(ErrorInfo::new(
                 value.len(),
+                format!(
+                    "Expected alpha char or underscore: found {:?}",
+                    value.chars().next().unwrap()
+                ),
             ));
             return;
         }
@@ -200,36 +219,26 @@ impl Lexer {
         }
 
         // Keyword or Identifier
-        if value.len() > 0 {
-            let kind = match TokenKeyword::make(value.as_str()) {
-                Some(keyword) => TokenKind::Keyword(keyword),
-                None => TokenKind::Identifier,
-            };
+        let kind = match TokenKeyword::make(value.as_str()) {
+            Some(keyword) => TokenKind::Keyword(keyword),
+            None => TokenKind::Identifier,
+        };
 
-            let payload = match kind {
-                TokenKind::Identifier => match self.ident_map.contains_key(&value) {
-                    true => self.ident_map.get(&value).unwrap().clone(),
-                    false => {
-                        self.ident_map.insert(value.clone(), self.identifiers.len());
-                        self.identifiers.push(value);
-                        self.identifiers.len() - 1
-                    }
-                },
-                _ => 0,
-            };
+        let payload = match kind {
+            TokenKind::Identifier => match self.ident_map.contains_key(&value) {
+                true => self.ident_map.get(&value).unwrap().clone(),
+                false => {
+                    self.ident_map.insert(value.clone(), self.identifiers.len());
+                    self.identifiers.push(value);
+                    self.identifiers.len() - 1
+                }
+            },
+            _ => 0,
+        };
 
-            self.tokens.push(Token(self.token_info.len()));
-            self.token_info
-                .push(TokenInfo::new(kind, self.lines.len(), start, payload));
-        } else {
-            self.tokens.push(Token(self.token_info.len()));
-            self.token_info.push(TokenInfo::new(
-                TokenKind::Error,
-                self.lines.len(),
-                start,
-                value.len(),
-            ));
-        }
+        self.tokens.push(Token(self.token_info.len()));
+        self.token_info
+            .push(TokenInfo::new(kind, self.lines.len(), start, payload));
     }
 
     fn symbol(&mut self) {
@@ -239,7 +248,7 @@ impl Lexer {
         };
 
         let mut value = String::new();
-        let start = self.column;
+        let start = self.get_start();
 
         for i in index..end {
             match self.peekn(i) {
@@ -278,15 +287,23 @@ impl Lexer {
             }
             None => {
                 self.tokens.push(Token(self.token_info.len()));
-                self.token_info
-                    .push(TokenInfo::new(TokenKind::Error, self.lines.len(), start, 0))
+                self.token_info.push(TokenInfo::new(
+                    TokenKind::Error,
+                    self.lines.len(),
+                    start,
+                    self.errors.len(),
+                ));
+                self.errors.push(ErrorInfo::new(
+                    value.len(),
+                    format!("Unkown symbol {:?}", value),
+                ));
             }
         }
     }
 
     fn digit(&mut self) {
         let mut value = String::new();
-        let start = self.column;
+        let start = self.get_start();
 
         loop {
             match self.peek() {
@@ -312,14 +329,18 @@ impl Lexer {
                 TokenKind::Error,
                 self.lines.len(),
                 start,
-                value.len(),
+                self.errors.len(),
             ));
+            self.errors.push(ErrorInfo::new(
+                value.len(),
+                format!("Invalid number format"),
+            ))
         }
     }
 
     pub fn string(&mut self) {
         let mut value = String::new();
-        let start = (self.lines.len(), self.column);
+        let start = (self.lines.len(), self.get_start());
         self.next();
 
         let mut escaped = false;
@@ -355,7 +376,7 @@ impl Lexer {
 
     fn char(&mut self) {
         let mut value = String::new();
-        let start = self.column;
+        let start = self.get_start();
         self.next();
 
         let mut escaped = false;
@@ -374,7 +395,11 @@ impl Lexer {
                         TokenKind::Error,
                         self.lines.len(),
                         start,
+                        self.errors.len(),
+                    ));
+                    self.errors.push(ErrorInfo::new(
                         self.column - start,
+                        "Unterminated character literal".to_string(),
                     ))
                 }
                 _ => {
@@ -389,7 +414,11 @@ impl Lexer {
                 TokenKind::Error,
                 self.lines.len(),
                 start,
+                self.errors.len(),
+            ));
+            self.errors.push(ErrorInfo::new(
                 value.len() + 2,
+                "Length of character literal must be 1".to_string(),
             ))
         }
 
@@ -437,7 +466,7 @@ impl Lexer {
         self.token_info.push(TokenInfo::new(
             TokenKind::EOF,
             self.lines.len(),
-            self.column,
+            self.get_start(),
             0,
         ));
     }
@@ -447,6 +476,8 @@ impl From<&str> for Lexer {
     fn from(source: &str) -> Self {
         Lexer {
             buffer: source.chars().collect(),
+            errors: Vec::new(),
+
             lines: Vec::new(),
             column: 0,
 
@@ -466,6 +497,8 @@ impl From<String> for Lexer {
     fn from(source: String) -> Self {
         Lexer {
             buffer: source.chars().collect(),
+            errors: Vec::new(),
+
             lines: Vec::new(),
             column: 0,
 
