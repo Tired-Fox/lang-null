@@ -1,0 +1,9 @@
+* Conventions
+  - All syscalls are functions from dll files
+  - Stack has a 16 byte alignment with a 32 bytes of shadow space `sub rsp, 40`
+  - `[RCX, RDX, R8, R9]` are the first 4 int params
+  - `[XMM0, XMM1, XMM2, XMM3]` are the first 4 floats
+  - All other params are on the stack
+
+* References
+  - {https://en.wikipedia.org/wiki/X86_calling_conventions#x86-64_Calling_Conventions}[x86 conventions]

@@ -15,6 +15,7 @@ fn main() {
     let mut lexer = Lexer::new("main.nl");
     lexer.run();
 
+    println!("Token count: {}", lexer.tokens.len());
     for info in lexer.token_info {
         println!("{:?}", info);
     }

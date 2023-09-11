@@ -8,13 +8,13 @@ section .bss
 name:   resb 100
 
 section .data
-prompt: db 'Enter your name: ',0
-frmt:   db '%s',0
-greet:  db 'Hello, %s!',0ah,0
+prompt: db "Enter your name: ",0
+frmt:   db "%s",0
+greet:  db "Hello, %s!",0ah,0
 
 section .text
 start:
-        sub     rsp,40
+        sub     rsp,40          ; 8 align + 32 void space for windows
 
         mov     rcx,prompt
         call    printf

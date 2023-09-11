@@ -1,0 +1,13 @@
+* Conventions
+  - `[rdi, rsi, rdx, r10, r8, r9]` are the first 6 params
+  - All other params are on the stack
+  - `nasm -felf`
+  - ld
+  -- `-m elf_i386` for i386 (32-bit)
+  -- `-m elf_x86_64` for x86_64 (64-bit)
+  -- `<null>` for ARM (32-bit)
+
+* References
+  - {https://man7.org/linux/man-pages/man2/syscall.2.html#NOTES}[syscall(2) - man7]
+  - {https://blog.rchapman.org/posts/Linux_System_Call_Table_for_x86_64/}[syscall table]
+  - {https://chromium.googlesource.com/chromiumos/docs/+/master/constants/syscalls.md#calling-conventions}[syscall table Chrome]

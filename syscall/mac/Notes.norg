@@ -1,0 +1,14 @@
+* Convensions
+  - `0x2000000` for BSD ~ This is the core one to use
+  - `0x1000000` for Mach
+  - `0x3000000` for Machine Dependent
+  - `[rdi, rsi, rdx, r10, r8, r9]` Registers for params
+  - `rax` for syscall number
+  - 
+
+* References
+  - {https://opensource.apple.com/source/xnu/xnu-792.13.8/osfmk/mach/i386/syscall_sw.h}[Masks]
+  - {https://opensource.apple.com/source/xnu/xnu-1504.3.12/bsd/kern/syscalls.master}[syscalls]
+  - {https://dustin.schultz.io/mac-os-x-64-bit-assembly-system-calls.html}[mac-os-x-64-assembly-syscalls (blog)]
+  - {https://filippo.io/making-system-calls-from-assembly-in-mac-os-x/}[Sample hello-world]
+

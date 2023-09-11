@@ -242,33 +242,26 @@ impl Lexer {
     }
 
     fn symbol(&mut self) {
-        let (mut index, end) = match self.lines.last() {
-            Some(last) => (0, last.end - self.column),
-            None => (0, 0),
-        };
-
         let mut value = String::new();
         let start = self.get_start();
 
-        for i in index..end {
-            match self.peekn(i) {
+        loop {
+            match self.peek() {
                 Some(c) if !c.is_alphabetic() && !c.is_whitespace() && !c.is_digit(10) => {
                     value.push(self.next());
                 }
                 _ => break,
             }
-            index += 1;
         }
 
-        // try longest to shortest combinations. Greedy algorithm
+        // try longest to shortest combinations (Greedy)
         let mut kind: Option<TokenKind> = None;
         for i in 0..value.len() {
             match TokenSymbol::make(&value[..value.len() - i]) {
                 Some(symbol) => {
                     kind = Some(TokenKind::Symbol(symbol));
-                    // for _ in 0..=i {
-                    //     self.next();
-                    // }
+                    // Move current char back to what was actually consumed
+                    self.column -= i;
                     break;
                 }
                 None => {}
@@ -453,6 +446,9 @@ impl Lexer {
                         '\'' => {
                             self.char();
                         }
+                        '/' if self.peekn(1) == Some('/') || Some('*') == self.peekn(1) => {
+                            self.whitespace()
+                        }
                         _ => {
                             self.symbol();
                         }
@@ -469,6 +465,10 @@ impl Lexer {
             self.get_start(),
             0,
         ));
+
+        // Deallocate buffer & map memory
+        self.buffer = Vec::new();
+        self.ident_map = HashMap::new();
     }
 }
 
