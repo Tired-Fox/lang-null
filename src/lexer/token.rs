@@ -164,10 +164,14 @@ and all but binary and hex support scientific notation. Number types are specifi
 - Hex: `0xFF_A03.F`
 - Binary: `0b1001_0101`
 - Octal: `0o123_123.74e-3`"#,
-    String: "Ex: `\"Hello, world!\"`"
+    String: "Ex: `\"Hello, world!\"`",
+    Char: "A single character"
 }
 
+#[derive(Debug)]
 pub struct Token(pub usize);
+
+#[derive(Debug)]
 pub struct TokenInfo {
     /// The kind of token
     pub kind: TokenKind,
@@ -200,6 +204,12 @@ pub enum TokenKind {
     Keyword(TokenKeyword),
     /// A non symbol, or literal string of characters
     Identifier,
+
+    IntegerTypeLiteral,
+    UnsignedTypeLiteral,
+    FloatTypeLiteral,
+
+    Error,
     EOF,
 }
 
@@ -227,5 +237,143 @@ mod tests {
     fn make_symbol_fail() {
         let symbol = "n";
         assert_eq!(TokenSymbol::make(symbol), None);
+    }
+}
+
+pub struct NumberLiteral;
+impl NumberLiteral {
+    pub fn verify(value: &String) -> bool {
+        let mut chars = value.chars();
+        if chars.next().unwrap() == '0' {
+            match value.chars().next() {
+                Some('x') => {
+                    let mut decimal = false;
+                    while let Some(c) = chars.next() {
+                        match c {
+                            'a'..='f' | 'A'..='F' | '0'..='9' | '_' => {}
+                            '.' => {
+                                if decimal {
+                                    return false;
+                                }
+                                decimal = true;
+                            }
+                            _ => {
+                                return false;
+                            }
+                        }
+                    }
+                }
+                Some('o') => {
+                    let mut decimal = false;
+                    let mut exponent = false;
+                    let mut plus_minus = false;
+
+                    while let Some(c) = chars.next() {
+                        match c {
+                            '0'..='7' | '_' => {}
+                            '.' => {
+                                if decimal {
+                                    return false;
+                                }
+                                decimal = true;
+                            }
+                            '-' | '+' => {
+                                if !exponent || plus_minus {
+                                    return false;
+                                }
+                                plus_minus = true;
+                            }
+                            'e' => {
+                                if exponent {
+                                    return false;
+                                }
+                                exponent = true;
+                                decimal = true;
+                            }
+                            _ => {
+                                return false;
+                            }
+                        }
+                    }
+                }
+                Some('b') => {
+                    while let Some(c) = chars.next() {
+                        match c {
+                            '0'..='1' | '_' => {}
+                            _ => {
+                                return false;
+                            }
+                        }
+                    }
+                }
+                Some(_) => {
+                    let mut decimal = false;
+                    let mut exponent = false;
+                    let mut plus_minus = false;
+
+                    while let Some(c) = chars.next() {
+                        match c {
+                            '0'..='9' | '_' => {}
+                            '.' => {
+                                if decimal {
+                                    return false;
+                                }
+                                decimal = true;
+                            }
+                            '-' | '+' => {
+                                if !exponent || plus_minus {
+                                    return false;
+                                }
+                                plus_minus = true;
+                            }
+                            'e' => {
+                                if exponent {
+                                    return false;
+                                }
+                                exponent = true;
+                                decimal = true;
+                            }
+                            _ => {
+                                return false;
+                            }
+                        }
+                    }
+                }
+                None => {}
+            }
+        } else {
+            let mut decimal = false;
+            let mut exponent = false;
+            let mut plus_minus = false;
+
+            while let Some(c) = chars.next() {
+                match c {
+                    '0'..='9' | '_' => {}
+                    '.' => {
+                        if decimal {
+                            return false;
+                        }
+                        decimal = true;
+                    }
+                    '-' | '+' => {
+                        if !exponent || plus_minus {
+                            return false;
+                        }
+                        plus_minus = true;
+                    }
+                    'e' => {
+                        if exponent {
+                            return false;
+                        }
+                        exponent = true;
+                        decimal = true;
+                    }
+                    _ => {
+                        return false;
+                    }
+                }
+            }
+        }
+        true
     }
 }
