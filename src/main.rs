@@ -1,6 +1,8 @@
 extern crate null;
+extern crate null_macros;
 
 use null::lexer::Lexer;
+use null::parser::token;
 
 fn main() {
     let source = r#"
@@ -19,8 +21,17 @@ fn main() {
     for info in lexer.token_info {
         println!("{:?}", info);
     }
-    println!("{:?}", lexer.identifiers);
-    println!("{:?}", lexer.literal_numbers);
-    println!("{:?}", lexer.literal_strings);
-    println!("{:?}", lexer.errors);
+    println!("\nIdents: {:?}", lexer.identifiers);
+    println!("Numbrs: {:?}", lexer.literal_numbers);
+    println!("Strings: {:?}", lexer.literal_strings);
+    println!("Errors: {:?}", lexer.errors);
+
+    let exit_code = 69;
+    println!(
+        "{}",
+        asm! {
+            mov ecx, {exit_code}
+            call ExitProcess
+        }
+    )
 }

@@ -4,7 +4,8 @@
   - `0x3000000` for Machine Dependent
   - `[rdi, rsi, rdx, r10, r8, r9]` Registers for params
   - `rax` for syscall number
-  - 
+  - `nasm -fmacho64`
+  - `ld -macosx_version_min latest`
 
 * References
   - {https://opensource.apple.com/source/xnu/xnu-792.13.8/osfmk/mach/i386/syscall_sw.h}[Masks]
