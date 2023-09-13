@@ -49,19 +49,19 @@ macro_rules! platform {
 pub fn exit(exit_code: i32) -> SyscallRet {
     platform!(
         "windows",
-        asm! {
+        asm![
             mov exc, {exit_code}
             call {ExitProcess.name}
-        },
+        ],
         [ExitProcess]
     );
 
     platform!(
         "unix",
-        asm! {
+        asm![
             mov ebx, {exit_code}
             mov eax, 0x2000001
             syscall
-        }
+        ]
     )
 }

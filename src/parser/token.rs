@@ -1,6 +1,6 @@
-use std::{fmt::Display, process::Command};
+use std::process::Command;
 
-use crate::compiler::{builtin, external::Extern};
+use crate::compiler::syscall::*;
 
 pub struct Function {
     name: &'static str,
@@ -25,7 +25,7 @@ macro_rules! function {
 pub fn tester() {
     use std::fs;
 
-    let (result, externs) = builtin::exit::asm(vec!["50".to_string()]);
+    let (result, externs) = exit(69);
     let file = format!(
         r#"global start
 {}
