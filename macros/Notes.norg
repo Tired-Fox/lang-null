@@ -1,0 +1,32 @@
+* NASM (Macro)
+** ASM
+   - RAX: *First return register*
+   - RBX: _Base pointer_
+   - RCX: *Used for arguments*
+   - RDX: *Used for arguments*
+   - RSP: _Stack pointer_
+   - RBP: _Frame pointer_
+   - RSI: *Used for arguments*
+   - RDI: *Used for arguments*
+   - R8: *Arguments*
+   - R9: *Arguments*
+   - R10: Static chain pointer
+   - R11: Temp register
+   - R12-R15: _Reserved_
+   - XMM0-XMM1: Return float args
+   - XMM2-XMM7: Float args
+   - XMM8-XMM15: Temp registers
+   - MMX0-MMX7: Temp registers
+   - st0: return long doulbe arg
+   - st1: return long double arg
+
+*** Instructions
+    - `ADC ADD AND CALL CBW CLC CLD CLI CMC CMP CMPSB CMPSW CWD DEC DIV IDIV IMUL INC INT INTO IRET Jcc JCXZ JMP 
+    LAHF LDS LEA LESLOCK LODSB LODSW LOOP MOV MOVSB MOVSW MUL NEG NOP NOT OR OUT POP POPF PUSH PUSHF RCL RCR REP
+    RET RETN RETF ROL ROR SAL SAR SHL SHR STC STD STI SUB TEST WAIT XOR CMOVcc SYSCALL BT BTS BTR BTC BSF BSR
+    SHLD SHRD MOVZX MOVSX SETcc`
+    -- Any ending in `cc` are conditional sets and have many varients
+
+** Reference
+   - {https://en.wikipedia.org/wiki/X86_instruction_listings}[Instructions & Flags]
+   - {https://cs.lmu.edu/~ray/notes/nasmtutorial/}[Examples]

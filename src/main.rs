@@ -31,7 +31,7 @@ fn main() {
     println!(
         "{}",
         asm![
-            mov ecx, {exit_code}
+            mov ecx, {exit_code} ;Some Comment;
             call ExitProcess
         ]
     )

@@ -1,0 +1,224 @@
+// {https://www.felixcloutier.com/x86/}[Reference]
+// Unfinished
+
+pub enum CC {
+    A,
+    AE,
+    B,
+    BE,
+    C,
+    E,
+    G,
+    GE,
+    L,
+    LE,
+    NA,
+    NAE,
+    NB,
+    NBE,
+    NC,
+    NE,
+    NG,
+    NGE,
+    NL,
+    NLE,
+    NO,
+    NP,
+    NS,
+    NZ,
+    O,
+    P,
+    PE,
+    PO,
+    S,
+    Z,
+}
+
+macro_rules! instructions {
+    ($($name: ident[$size: literal]: $doc: literal),* $(,)?) => {
+        pub enum Instruction {
+            #[doc="conditionally mov"]
+            CMOV(CC),
+            #[doc="jump if condition is met"]
+            J(CC),
+            $(
+                #[doc=$doc]
+                $name,
+            )*
+        }
+
+        impl Instruction {
+            pub fn count<T>(&self, list: Vec<T>) -> bool {
+                match self {
+                    Instruction::CMOV(_) => {
+                        return list.len() != 2;
+                    }
+                    Instruction::J(_) => {
+                        return list.len() != 1;
+                    }
+                    $(
+                        Instruction::$name => {
+                            return list.len() != $size;
+                        }
+                    )*
+                }
+            }
+
+            pub fn new(name: &str) -> Option<Instruction> {
+                match name.to_uppercase().as_str() {
+                    $(
+                        stringify!($name) => Some(Instruction::$name),
+                    )*
+                    i if i.starts_with("CMOV") => {
+                        if let Some(cc) = CC::new(i[4..]) {
+                            Some(Instruction::CMOV(cc))
+                        } else {
+                            None
+                        }
+                    }
+                    i if i.starts_with("J") && let Some(cc) = CC::new(i[1..]) => {
+                        if let Some(cc) = CC::new(i[1..]) {
+                            Some(Instruction::J(cc))
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None
+                }
+            }
+        }
+
+        impl std::fmt::Display for Instruction {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self {
+                    $(
+                        Instruction::$name => write!(f, stringify!($name)),
+                    )*
+                }
+            }
+        }
+    };
+}
+
+instructions! {
+    AAA[0]: "ascii adjust after addition",
+    AAD[0]: "ascii adjust ax before division",
+    AAM[0]: "ascii adjust ax after multiply",
+    AAS[0]: "ascii adjust al after subtraction",
+
+    ADC[2]: "add with carry",
+    ADCX[2]: "unsigned integer addition of two operands with carry flag",
+    ADD[2]: "add source to destination",
+    ADOX[2]: "unsigned integer addition of source to destination ith overflow flag",
+
+    AND[2]: "logical and",
+    ANDN[2]: "logical and not",
+
+    BLSI[2]: "extract lowest set isolated bit",
+    BLSMSK[2]: "get mask up to lowest set bit",
+    BLSR[2]: "reset lowest set bit",
+
+    BSF[2]: "bit scan forward",
+    BSR[2]: "bit scan reverse",
+    BSWAP[1]: "byte swap",
+    BT[2]: "bit test",
+    BTC[2]: "bit test and complement",
+    BTR[2]: "bit test and reset",
+    BTS[2]: "bit test and set",
+    BZHI[2]: "zero high bits starting with specified bit position",
+
+    CALL[1]: "call procedure",
+
+    CBW[0]: "convert byte to word/convert word to doubleword/convert doubleword toQuadword",
+    CDQ[0]: "convert word to doubleword/convert doubleword to quadword",
+    CDQE[0]: "convert byte to word/convert word to doubleword/convert doubleword toQuadword",
+
+    CLAC[0]: "clear ac flag in eflags register",
+    CLC[0]: "clear carry flag",
+    CLD[0]: "clear direction flag",
+    CLI[0]: "clear interrupt flag",
+    CLRSSBSY[0]: "clear busy flag in a supervisor shadow stack token",
+    CLTS[0]: "clear task-switched flag in cr0",
+    CLUI[0]: "clear user interrupt flag",
+
+    CMC[0]: "complement carry flag",
+
+    CMP[2]: "compare two operands",
+
+    CQO[0]: "convert word to doubleword/convert doubleword to quadword",
+    CWD[0]: "convert word to doubleword/convert doubleword to quadword",
+    CWDE[0]: "convert byte to word/convert word to doubleword/convert doubleword toQuadword",
+
+    DEC[1]: "decrement by 1",
+    DIV[1]: "unsigned divide",
+
+    IDIV[1]: "signed divide",
+    IMUL[1]: "signed multiply",
+
+    INC[1]: "increment by 1",
+    INT[1]: "n	call to interrupt procedure",
+    INTO[1]: "call to interrupt procedure if overflow",
+
+    JMP[1]: "jump",
+
+    LDS[1]: "load far pointer",
+    LES[1]: "load far pointer",
+    LFS[1]: "load far pointer",
+    LEA[2]: "load effective address",
+
+    MOV[2]: "move",
+
+    MOVD[2]: "move doubleword/move quadword",
+    MOVQ[2]: "move doubleword/move quadword",
+    MOVSX[2]: "move with sign-extension",
+    MOVZX[2]: "move with zero-extend",
+
+    MUL[1]: "unsigned multiply",
+    MULX[1]: "unsigned multiply without affecting flags",
+    NEG[1]: "two's complement negation",
+    NOP[0]: "no operation",
+    NOT[1]: "one's complement negation",
+    OR[2]: "logical inclusive or",
+
+    PUSH[1]: "push word, doubleword, or quadword onto the stack",
+    RCL[1]: "rotate left with carry flag",
+    RCR[1]: "rotate right with carry flag",
+
+    RET[0]: "return from procedure",
+
+    ROL[1]: "rotate left",
+    ROR[1]: "rotate right",
+    RORX[1]: "rotate right logical without affecting flags",
+
+    SAL[1]: "shift left",
+    SAR[1]: "shift right",
+    SARX[1]: "shift without affecting flags",
+
+    SHL[1]: "shift left",
+    SHLX[1]: "shift without affecting flags",
+
+    SHR[1]: "shift right",
+    SHRX[1]: "shift without affecting flags",
+
+    STC[0]: "set carry flag",
+    STD[0]: "set direction flag",
+    STI[0]: "set interrupt flag",
+
+    SUB[2]: "subtract",
+    SYSCALL[1]: "fast system call",
+
+    TEST[2]: "logical compare",
+    XOR[2]: "logical exclusive or",
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn verify_count() {
+        assert!(Instruction::ADD.count(vec!["0", "1"]));
+        assert_eq!(Instruction::ADD.to_string(), "ADD".to_string());
+        assert!(Instruction::new("CALL").is_some());
+    }
+}
