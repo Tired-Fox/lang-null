@@ -30,3 +30,4 @@
 ** Reference
    - {https://en.wikipedia.org/wiki/X86_instruction_listings}[Instructions & Flags]
    - {https://cs.lmu.edu/~ray/notes/nasmtutorial/}[Examples]
+   - {https://cs.lmu.edu/~ray/notes/nasmtutorial/#:~:text=Structure%20of%20a%20NASM%20Program,-NASM%20is%20line&text=Most%20lines%20have%20an%20instruction,data%20.}[Nasm layout]
