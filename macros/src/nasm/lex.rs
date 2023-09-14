@@ -1,14 +1,19 @@
+use std::fmt::Display;
+
 use super::Expr;
 use proc_macro2::Span;
+use proc_macro_error::abort;
 use quote::ToTokens;
 use syn::{
-    braced, bracketed, parenthesized,
+    braced, bracketed,
+    ext::IdentExt,
+    parenthesized,
     punctuated::Punctuated,
     token::{Brace, Bracket, Paren},
     Ident, Lit, LitInt, LitStr, Token,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Symbol {
     Comma(Span),
     Dot(Span),
@@ -18,6 +23,27 @@ pub enum Symbol {
     Slash(Span),
     Percent(Span),
     Dollar(Span),
+    Colon(Span),
+}
+
+impl Display for Symbol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Comma(_) => ",",
+                Self::Dot(_) => ".",
+                Self::Plus(_) => "+",
+                Self::Minus(_) => "-",
+                Self::Star(_) => "*",
+                Self::Slash(_) => "/",
+                Self::Percent(_) => "%",
+                Self::Dollar(_) => "$",
+                Self::Colon(_) => ":",
+            }
+        )
+    }
 }
 
 impl Symbol {
@@ -30,20 +56,21 @@ impl Symbol {
             | Self::Star(span)
             | Self::Slash(span)
             | Self::Percent(span)
-            | Self::Dollar(span) => span.clone(),
+            | Self::Dollar(span)
+            | Self::Colon(span) => span.clone(),
         }
     }
 
     pub fn peek(input: syn::parse::ParseStream) -> bool {
         return input.peek(Token![,])
             || input.peek(Token![.])
+            || input.peek(Token![:])
             || input.peek(Token![+])
             || input.peek(Token![-])
             || input.peek(Token![*])
             || input.peek(Token![/])
             || input.peek(Token![%])
-            || input.peek(Token![$])
-            || input.peek(Token![;]);
+            || input.peek(Token![$]);
     }
 }
 
@@ -65,13 +92,15 @@ impl syn::parse::Parse for Symbol {
             Ok(Symbol::Percent(v.span))
         } else if let Ok(v) = input.parse::<Token![$]>() {
             Ok(Symbol::Dollar(v.span))
+        } else if let Ok(v) = input.parse::<Token![:]>() {
+            Ok(Symbol::Colon(v.span))
         } else {
             Err(syn::Error::new(input.span(), "Expected symbol token"))
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Token {
     Ident(Span, String),
     Keyword(Span, Keyword),
@@ -81,7 +110,7 @@ pub enum Token {
     String(Span, String),
 
     List(Span, Vec<Expr>),
-    Ref(Span, Vec<Token>),
+    Ref(Span, Expr),
     Injection(Span, String),
     Comment(Span, String),
     Unkown,
@@ -103,9 +132,39 @@ impl Token {
     }
 }
 
+impl Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Ident(_, val) => val.clone(),
+                Self::Injection(_, _) => String::from("{}"),
+                Self::String(_, val) => format!("\\\"{}\\\"", val),
+                Self::Number(_, val) => val.clone(),
+                Self::Symbol(_, sym) => sym.to_string(),
+                Self::Keyword(_, kw) => kw.to_string(),
+                Self::Comment(_, _) => String::new(),
+                Self::Ref(_, expr) => format!("[{}]", expr.to_string()),
+                Self::List(_, expressions) => {
+                    format!(
+                        "({})",
+                        expressions
+                            .iter()
+                            .map(|e| e.to_string())
+                            .collect::<Vec<String>>()
+                            .join(", ")
+                    )
+                }
+                Self::Unkown => String::new(),
+            }
+        )
+    }
+}
+
 impl syn::parse::Parse for Token {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        if input.peek(Ident) {
+        if input.peek(Ident::peek_any) {
             return Ok(match Keyword::parse(input) {
                 // Keyword
                 Ok(kw) => Token::Keyword(Span::call_site(), kw),
@@ -122,9 +181,8 @@ impl syn::parse::Parse for Token {
             } else if input.peek(LitStr) {
                 let str = input.parse::<LitStr>()?;
                 return Ok(Token::String(str.span(), str.value()));
-            } else {
-                return Err(syn::Error::new(input.span(), "Not a known literal"));
             }
+            return Err(syn::Error::new(input.span(), "Not a known literal"));
         } else if input.peek(Token![;]) {
             // Parse until the next ; symbol for closing the comment.
             // Example: ;Some comment here;
@@ -163,7 +221,7 @@ impl syn::parse::Parse for Token {
                 let next = Token::parse(&bracket)?;
                 prm.push(next);
             }
-            return Ok(Token::Ref(bracket.span(), prm));
+            return Ok(Token::Ref(bracket.span(), Expr(Span::call_site(), prm)));
         } else if input.peek(Paren) {
             let paren;
             parenthesized!(paren in input);
@@ -189,18 +247,35 @@ impl syn::parse::Parse for Token {
 
             return Ok(Token::List(paren.span(), params));
         }
-        Ok(Token::Unkown)
+        abort!(input.span(), "Unkown token")
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Keyword {
-    Times,
-    Dup,
-    Incbin,
-    Extern,
-    Global,
-    Section,
+    Times(Span),
+    Dup(Span),
+    Incbin(Span),
+    Extern(Span),
+    Global(Span),
+    Section(Span),
+}
+
+impl Display for Keyword {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Times(_) => "times",
+                Self::Dup(_) => "dup",
+                Self::Incbin(_) => "incbin",
+                Self::Extern(_) => "extern",
+                Self::Global(_) => "global",
+                Self::Section(_) => "section",
+            }
+        )
+    }
 }
 
 impl syn::parse::Parse for Keyword {
@@ -209,27 +284,27 @@ impl syn::parse::Parse for Keyword {
             Some((kw, _)) => Ok(match kw.to_string().to_lowercase().as_str() {
                 "times" => {
                     let _ = input.parse::<Ident>();
-                    Keyword::Times
+                    Keyword::Times(kw.span())
                 }
                 "dup" => {
                     let _ = input.parse::<Ident>();
-                    Keyword::Dup
+                    Keyword::Dup(kw.span())
                 }
                 "incbin" => {
                     let _ = input.parse::<Ident>();
-                    Keyword::Incbin
+                    Keyword::Incbin(kw.span())
                 }
                 "extern" => {
-                    let _ = input.parse::<Ident>();
-                    Keyword::Extern
+                    let _ = input.parse::<Token![extern]>();
+                    Keyword::Extern(kw.span())
                 }
                 "global" => {
                     let _ = input.parse::<Ident>();
-                    Keyword::Global
+                    Keyword::Global(kw.span())
                 }
                 "section" => {
                     let _ = input.parse::<Ident>();
-                    Keyword::Section
+                    Keyword::Section(kw.span())
                 }
                 _ => return Err(syn::Error::new(kw.span(), "Expected a keyword")),
             }),

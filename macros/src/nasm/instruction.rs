@@ -94,7 +94,21 @@ macro_rules! instructions {
         }
 
         impl Instruction {
-            pub fn count<T>(&self, list: Vec<T>) -> bool {
+            pub fn count(&self) -> i32 {
+                match self {
+                    $(
+                        Instruction::$cc(_) => $cs,
+                    )*
+                    $(
+                        Instruction::$val => 1,
+                    )*
+                    $(
+                        Instruction::$name => $size,
+                    )*
+                }
+            }
+
+            pub fn verify<T>(&self, list: &Vec<T>) -> bool {
                 match self {
                     $(
                         Instruction::$cc(_) => {
@@ -297,7 +311,8 @@ mod test {
 
     #[test]
     fn count() {
-        assert!(Instruction::ADD.count(vec!["0", "1"]));
+        assert!(Instruction::ADD.verify(vec!["0", "1"]));
+        assert_eq!(Instruction::ADD.count(), 2);
     }
 
     #[test]

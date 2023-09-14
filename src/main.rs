@@ -31,8 +31,14 @@ fn main() {
     println!(
         "{}",
         asm![
-            mov ecx, {exit_code} ;Some Comment;
-            call ExitProcess
+                    global  start
+                    extern  ExitProcess
+                    incbin  "../bin/libs.o"
+                    section .text
+
+            start:
+                    mov     ecx, {exit_code} ;Some Comment;
+                    call    ExitProcess
         ]
     )
 }
