@@ -1,38 +1,34 @@
 use std::fmt::Display;
 
 use super::external::*;
-use null_macros::asm;
+use null_macros::nasm;
 
 pub type SyscallRet = (String, Option<Vec<Extern>>);
 
-struct Syscall(&'static str, &'static str);
+struct Syscall(&'static str, &'static str, &'static str);
 impl Display for Syscall {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         #[cfg(target_os = "linux")]
-        return self.0;
+        return write!(f, "{}", self.0);
         #[cfg(target_os = "macos")]
-        return self.1;
-        #[cfg(not(target_os = "unix"))]
-        panic!("The current OS and architecture doesn't support the current syscall")
+        return write!(f, "{}", self.1);
+        #[cfg(target_os = "windows")]
+        return write!(f, "{}", self.2);
     }
 }
 
 macro_rules! syscalls {
-    ($($name: ident: [$linux: literal, $macos: literal]),* $(,)?) => {
-        cfg_if::cfg_if! {
-            if #[cfg(unix)] {
-                $(
-                    paste::paste!{
-                        const [<SYSCALL_ $name:upper>]: Syscall = Syscall($linux, $macos);
-                    }
-                )*
+    ($($name: ident: [$linux: literal, $macos: literal, $windows: literal]),* $(,)?) => {
+        $(
+            paste::paste!{
+                const [<SYSCALL_ $name:upper>]: Syscall = Syscall($linux, $macos, $windows);
             }
-        }
+        )*
     };
 }
 
 syscalls! {
-    exit: ["60", "0x02000001"]
+    exit: ["60", "0x02000001", "ExitProcess"]
 }
 
 macro_rules! platform {
@@ -49,18 +45,18 @@ macro_rules! platform {
 pub fn exit(exit_code: i32) -> SyscallRet {
     platform!(
         "windows",
-        asm![
+        nasm![
             mov exc, {exit_code}
-            call {ExitProcess.name}
+            call {SYSCALL_EXIT}
         ],
         [ExitProcess]
     );
 
     platform!(
         "unix",
-        asm![
+        nasm![
             mov ebx, {exit_code}
-            mov eax, 0x2000001
+            mov eax, {SYSCALL_EXIT}
             syscall
         ]
     )

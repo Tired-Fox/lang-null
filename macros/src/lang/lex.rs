@@ -193,10 +193,15 @@ impl syn::parse::Parse for Token {
                     let _ = input.parse::<Token![;]>()?;
                     break;
                 } else {
-                    let expr = input.parse::<syn::Expr>().map_err(|e| {
-                        syn::Error::new(e.span(), "Could not parse expr in comment")
-                    })?;
-                    tokens.push(expr.to_token_stream().to_string());
+                    match input.parse::<syn::Expr>() {
+                        Ok(expr) => tokens.push(expr.to_token_stream().to_string()),
+                        Err(_) => match Ident::parse_any(input) {
+                            Ok(ident) => tokens.push(ident.to_string()),
+                            Err(e) => {
+                                abort!(input.span(), "Failed to parse token in comment: {}", e)
+                            }
+                        },
+                    }
                 }
             }
             return Ok(Token::Comment(start.span, tokens.join(" ")));

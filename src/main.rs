@@ -3,7 +3,7 @@ extern crate null_macros;
 
 use null::lexer::Lexer;
 use null::parser::token;
-use null_macros::asm;
+use null_macros::nasm;
 
 fn main() {
     //     let source = r#"
@@ -30,15 +30,12 @@ fn main() {
     let exit_code = 69;
     println!(
         "{}",
-        asm![
-                    global  start
-                    extern  ExitProcess
-                    incbin  "../bin/libs.o"
-                    section .text
-
+        nasm![
+                   global  start
+                   section .text
             start:
-                    mov     ecx, {exit_code} ;Some Comment;
-                    call    ExitProcess
+                   mov     ecx, {exit_code} ;Some Comment;
+                   call    ExitProcess
         ]
     )
 }

@@ -312,10 +312,7 @@ impl NASM {
                 Token::Keyword(_, kw) => self.create_keyword(&kw, &mut tokens),
                 Token::Ident(span, ident) => self.create_ident(&span, &ident, &mut tokens),
                 Token::Comment(_, _) => {}
-
-                token => {
-                    abort!(token.span(), format!("Invalid syntax: {:?}", token))
-                }
+                token => self.errors.push((token.span(), msg!("Invalid syntax"))),
             }
         }
     }
