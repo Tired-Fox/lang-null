@@ -318,7 +318,9 @@ impl RFmtString for &str {
         let (test, captures) = format::walk(self);
         let args = Arguments::new(captures, args.into_param());
         println!("{:?}\n{:?}", test, args);
-
+        for part in test[..test.len()-1].iter() {
+            println!("{}{}", part, args.);
+        }
         String::new()
     }
 }
@@ -369,6 +371,10 @@ impl<'a> Arguments<'a> {
             }
         }
         args
+    }
+
+    pub fn next(&mut self) -> String {
+        let arg = self.fmt_args.remove(0);
     }
 }
 
@@ -464,6 +470,12 @@ pub enum Step {
     Width = 1 << 4,
     Precision = 1 << 5,
     Type = 1 << 6,
+}
+
+impl FArg {
+    pub fn format(&self, value: T) -> String {
+
+    }
 }
 
 impl Step {

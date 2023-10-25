@@ -5,7 +5,7 @@ use proc_macro2::Span;
 use super::instruction::Instruction;
 use super::Expr;
 
-/*
+/* Nasm File Structure
                  # Labels    Instructions    Operands
 
  # Directives:               global          start

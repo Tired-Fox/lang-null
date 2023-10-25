@@ -22,5 +22,6 @@ macro_rules! externs {
 }
 
 externs! {
-    ExitProcess: "kernel32.dll"
+    ExitProcess: "kernel32.dll",
+    PrintF: "msvcrt.dll"
 }

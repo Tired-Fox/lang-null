@@ -130,14 +130,13 @@ kinds! {
 
 kindn! {
     TokenKeyword,
-    And<"and">: "Equavilent to `&&`. Check for both values being truthy",
+    And<"and">: "Equivalent to `&&`. Check for both values being truthy",
     Break<"break">: "Break out of context",
     Const<"const">: "A value that cannot have it's data changed",
     Continue<"continue">: "Go to next iteration of a loop",
     Elif<"elif">: "Optional conditional branch",
     Else<"else">: "Default case of a context",
     Enum<"enum">: "Named set of values",
-    Exit<"exit">: "Exit the program with a exit code",
     False<"false">: "Falsy",
     Fn<"fn">: "Defines a procedure",
     For<"for">: "Defines a loop that manages it's own state",
@@ -147,11 +146,11 @@ kindn! {
     Is<"is">: "Checks the type of the value",
     Let<"let">: "Defines a immutable variable",
     Match<"match">: "Switch statement with pattern matching on a value",
-    Not<"not">: "Equavilent to `!`. Negates/Flips the truthiness of a value",
-    Or<"or">: "Equavilent to `||`. Check for one of the values to be truthy",
+    Not<"not">: "Equivalent to `!`. Negates/Flips the truthiness of a value",
+    Or<"or">: "Equivalent to `||`. Check for one of the values to be truthy",
     Pub<"pub">: "Defines a variable or procedure as visible to other modules",
     Return<"return">: "Pass a value back from the current context",
-    Struct<"struct">: "Strucutre of data. Can be initialized with values and have methods attached",
+    Struct<"struct">: "Structure of data. Can be initialized with values and have methods attached",
     True<"true">: "Truthy",
     Type<"type">: "A alias for another type or struct",
     While<"while">: "Defines a stateless loop",
@@ -171,7 +170,7 @@ and all but binary and hex support scientific notation. Number types are specifi
     Char: "A single character"
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Token(pub usize);
 
 #[derive(Debug)]

@@ -116,7 +116,7 @@ macro_rules! instructions {
                         }
                     )*
                     $(
-                        Instruction::$val => return list.len() == 1,
+                        Instruction::$val => return list.len() >= 1,
                     )*
                     $(
                         Instruction::$name => {

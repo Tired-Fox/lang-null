@@ -1,8 +1,19 @@
 // Cannot re-assign value and cannot be changed. Allowed in global scope
-const x: i32 = 0;
+
+// Types:
+// i8 i16 i32 i64 i128 (int == ptr to the best fit size)
+// u8 u16 u32 u64 u128 (uint == ptr to the best fit size)
+//    f16 f32 f64      (float == ptr to the best fit size)
+// string
+// any
+// undefined
+
+const x: int = 0;
+x: i32 = 0;
+x: i32 = 0;
 
 /*
-    Multiline comment
+    Multiline comment `/* markdown code escapes closing symbols */`
 */
 
 /**
@@ -66,16 +77,16 @@ extend Data with SayHello {
     }
 }
 
-math::(...args: []String, name: String) {
-  let result: i64 = 13*4+6/5%((4**4)//3)-3;
+math :: fn(name: String, ..args: []String) {
+  let result: int = 13*4+6/5%((4**4)//3)-3;
 
   if true and false or not false {
   }
 }
 
-main::() {
+main :: fn() {
     print("Hello, world!");
     print("Hello, {}!", Sub::NAME);
-    let value: []String = [];
-    let slice: &[]String = value[..3];
+    let value: []string = [];
+    let slice: &[]string = value[..3];
 }

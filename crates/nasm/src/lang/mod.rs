@@ -297,7 +297,7 @@ impl NASM {
             if !inst.verify(&params) {
                 self.errors.push((
                     span.clone(),
-                    format!("{} instruction expected {} arguments", inst, inst.count()),
+                    format!("{} instruction expected {} argument(s)", inst, inst.count()),
                 ))
             }
             self.nodes.push(Node::Instruction(inst, params))

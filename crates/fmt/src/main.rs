@@ -17,12 +17,13 @@ use rfmt::{args, named, pos, RFmtString};
 // parameter := argument '$'
 
 fn main() {
-    let rformat = "1: {} hello: {hello}, world: {1}! {world:<b.prec$} {{}}";
+    let rformat = "1: {} hello: {hello}, world: {1}! {world:<$} {{}}";
     let format = String::from(rformat);
 
     let exit_code = 69;
 
-    rformat.fmt(args![exit_code, hello: "Hello", "world"]);
+    let result = rformat.fmt(args![exit_code, hello: "Hello", "world"]);
+    println!("{}", result);
     // format.fmt(pos![exit_code]);
     // rformat.fmt(named![exit_code]);
     println!("{:1<10.0}", 10.32)

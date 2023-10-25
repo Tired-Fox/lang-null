@@ -1,41 +1,32 @@
 extern crate null;
-extern crate null_macros;
 
-use null::lexer::Lexer;
-use null::parser::token;
-use null_macros::nasm;
+use null::{parser::Parser, lexer::Lexer};
+use nasm_to_string::nasm;
 
 fn main() {
-    //     let source = r#"
-    // let x: i32 = 0;
-    // fn main() {
-    //     print("Hello, world!");
-    // }
-    // "#;
-    //
-    //     println!("{}\n", source);
-    //
-    //     let mut lexer = Lexer::new("main.nl");
-    //     lexer.run();
-    //
-    //     println!("Token count: {}", lexer.tokens.len());
-    //     for info in lexer.token_info {
-    //         println!("{:?}", info);
-    //     }
-    //     println!("\nIdents: {:?}", lexer.identifiers);
-    //     println!("Numbrs: {:?}", lexer.literal_numbers);
-    //     println!("Strings: {:?}", lexer.literal_strings);
-    //     println!("Errors: {:?}", lexer.errors);
-    //
-    let exit_code = 69;
-    println!(
-        "{}",
-        nasm![
-                   global  start
-                   section .text
-            start:
-                   mov     ecx, {exit_code} ;Some Comment;
-                   call    ExitProcess
-        ]
-    )
+    let source = r#"
+exit(0);
+"#;
+
+        println!("{}\n", source);
+
+        let mut lexer = Lexer::new("assets/null/main.nl");
+        lexer.run();
+
+        println!("Token count: {}", lexer.tokens.len());
+
+        let mut parser = Parser::new(lexer);
+        parser.parse();
+
+    // let exit_code = 69;
+    // println!(
+    //     "{}",
+    //     nasm![
+    //                global  start
+    //                section .text
+    //         start:
+    //                mov     ecx, {exit_code} ;Some Comment;
+    //                call    ExitProcess
+    //     ]
+    // )
 }

@@ -1,5 +1,5 @@
 [package]
-name = "null-macros"
+name = "nasm-to-string"
 version = "0.1.0"
 edition = "2021"
 

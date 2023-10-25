@@ -3,9 +3,8 @@ use std::fs;
 
 pub mod token;
 
-use token::{Token, TokenInfo, TokenKind};
-
-use self::token::{ErrorInfo, NumberLiteral, TokenKeyword, TokenLiteral, TokenSymbol};
+pub use self::token::{ErrorInfo, NumberLiteral, TokenKeyword, TokenLiteral, TokenSymbol};
+pub use token::{Token, TokenInfo, TokenKind};
 
 /// Information for location of a line in source
 #[derive(Debug, Clone, Copy)]
