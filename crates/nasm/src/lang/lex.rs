@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use proc_macro2::Span;
+use proc_macro2::{Span, TokenStream as TokenStream2};
 use proc_macro_error::abort;
 use quote::ToTokens;
 use syn::{braced, bracketed, ext::IdentExt, Ident, Lit, LitInt, LitStr, parenthesized, punctuated::Punctuated, token::{Brace, Bracket, Paren}, Token};
@@ -105,7 +105,7 @@ pub enum Token {
 
     List(Span, Vec<Expr>),
     Ref(Span, Expr),
-    Injection(Span, String),
+    Injection(Span, TokenStream2),
     Comment(Span, String),
     Unkown,
 }
@@ -206,11 +206,8 @@ impl syn::parse::Parse for Token {
         } else if input.peek(Brace) {
             let brace;
             braced!(brace in input);
-            let val = brace.to_string();
-            // Progress the parser allow any expression. Punctuated parse so the dot
-            // accessor can be used.
-            let parser = Punctuated::<syn::Expr, Token![.]>::parse_terminated;
-            let _ = parser(&brace);
+            let val = brace.parse::<TokenStream2>()?;
+            println!("Injection: {}", val);
             return Ok(Token::Injection(brace.span(), val));
         } else if input.peek(Bracket) {
             let bracket;

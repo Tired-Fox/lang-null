@@ -23,6 +23,15 @@ macro_rules! kinds {
                     _ => None,
                 }
             }
+
+            pub fn compare(&self, other: &str) -> bool {
+                match self {
+                    $(
+                        Self::$kind if $spelling == other => true,
+                    )*
+                    _ => false,
+                }
+            }
         }
     };
 }

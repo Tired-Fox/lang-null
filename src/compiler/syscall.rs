@@ -5,7 +5,7 @@ use nasm_to_string::nasm;
 
 pub type SyscallRet = (String, Option<Vec<Extern>>);
 
-struct Syscall(&'static str);
+pub struct Syscall(&'static str);
 impl Display for Syscall {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         return write!(f, "{}", self.0);
@@ -24,6 +24,9 @@ macro_rules! syscalls {
                 const [<SYSCALL_ $name:upper>]: Syscall = Syscall($windows);
             }
         )*
+        pub const SYSCALLS: &[&'static str] = &[
+            $(stringify!($name),)*
+        ];
     };
 }
 
@@ -47,7 +50,7 @@ pub fn exit(exit_code: i32) -> SyscallRet {
     platform!(
         "windows",
         nasm![
-            mov exc, {exit_code}
+            mov rcx, {exit_code}
             call {SYSCALL_EXIT}
         ],
         [ExitProcess]

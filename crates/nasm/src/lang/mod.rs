@@ -70,8 +70,6 @@ impl Display for NASM {
             longest_instruction = 7;
         }
 
-        println!("{} | {}", longest_label, longest_instruction);
-
         let inst_width = |length: usize| {
             (0..longest_instruction - length)
                 .map(|_| ' ')
@@ -130,7 +128,10 @@ impl Display for NASM {
                     ));
                 }
                 Node::Label(_, val) => {
-                    parts.push(format!("{}: {}", val, label_width(val.len() + 2)))
+                    parts.push(format!("{}: {}", val, label_width(val.len() + 2)));
+                },
+                Node::Injection(_, val) => {
+                    parts.push("\n{}\n".to_string());
                 }
             }
             prev = node;
@@ -311,8 +312,9 @@ impl NASM {
             match token {
                 Token::Keyword(_, kw) => self.create_keyword(&kw, &mut tokens),
                 Token::Ident(span, ident) => self.create_ident(&span, &ident, &mut tokens),
-                Token::Comment(_, _) => {}
-                token => self.errors.push((token.span(), msg!("Invalid syntax"))),
+                Token::Comment(_, _) => {},
+                Token::Injection(span, content) => self.nodes.push(Node::Injection(span.clone(), content.clone())),
+                token => self.errors.push((token.span(), format!("Invalid syntax: {:?}", token))),
             }
         }
     }
@@ -342,9 +344,6 @@ impl syn::parse::Parse for NASM {
             return Err(syn::Error::new(Span::call_site(), "Parsing errors found"));
         }
 
-        for node in nasm.nodes.iter() {
-            println!("{:?}", node);
-        }
         Ok(nasm)
     }
 }

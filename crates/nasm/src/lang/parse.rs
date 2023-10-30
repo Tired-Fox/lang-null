@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use proc_macro2::Span;
+use proc_macro2::{Span, TokenStream};
 
 use super::instruction::Instruction;
 use super::Expr;
@@ -51,6 +51,7 @@ pub enum Node {
     Section(Span, String),
     Label(Span, String),
     Instruction(Instruction, Vec<Expr>),
+    Injection(Span, TokenStream)
 }
 
 impl Display for Node {
@@ -59,6 +60,7 @@ impl Display for Node {
             Self::Directive(directive) => write!(f, "{}", directive),
             Self::Section(_, val) => write!(f, "section .{}", val),
             Self::Label(_, val) => write!(f, "{}: ", val),
+            Self::Injection(_, _) => write!(f, "{{}}"),
             Self::Instruction(inst, params) => {
                 write!(
                     f,

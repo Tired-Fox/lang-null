@@ -32,6 +32,7 @@ pub struct Lexer {
     pub token_info: Vec<TokenInfo>,
     pub literal_numbers: Vec<String>,
     pub literal_strings: Vec<String>,
+    pub literal_chars: Vec<char>,
 
     pub errors: Vec<ErrorInfo>,
 
@@ -40,13 +41,59 @@ pub struct Lexer {
 }
 
 impl Lexer {
-    fn read_file(path: &str) -> String {
-        fs::read_to_string(path).unwrap()
+    pub fn get_ident(&self, token: &Token) -> Option<&String> {
+        if self.token_info[token.0].kind == TokenKind::Identifier {
+            Some(&self.identifiers[self.token_info[token.0].payload])
+        } else {
+            None
+        }
     }
 
-    pub fn new(path: &str) -> Lexer {
+    pub fn get_kind(&self, token: &Token) -> TokenKind {
+        self.token_info[token.0].kind
+    }
+
+    pub fn get_number(&self, token: &Token) -> Option<&String> {
+        if self.token_info[token.0].kind == TokenKind::Literal(TokenLiteral::Number) {
+            Some(&self.literal_numbers[self.token_info[token.0].payload])
+        } else {
+            None
+        }
+    }
+
+    pub fn get_string(&self, token: &Token) -> Option<&String> {
+        if self.token_info[token.0].kind == TokenKind::Literal(TokenLiteral::String) {
+            Some(&self.literal_strings[self.token_info[token.0].payload])
+        } else {
+            None
+        }
+    }
+
+    pub fn get_char(&self, token: &Token) -> Option<char> {
+        if self.token_info[token.0].kind == TokenKind::Literal(TokenLiteral::Char) {
+            Some(self.literal_chars[self.token_info[token.0].payload])
+        } else {
+            None
+        }
+    }
+
+    pub fn get_loc(&self, token: &Token) -> (usize, usize) {
+        (self.token_info[token.0].line, self.token_info[token.0].column)
+    }
+}
+
+impl Lexer {
+    pub fn path<P: AsRef<std::path::Path>>(path: P) -> Self {
+        Lexer::new(fs::read_to_string(path).unwrap().as_str())
+    }
+
+    pub fn source(source: &str) -> Self {
+        Lexer::new(source)
+    }
+
+    fn new(source: &str) -> Self {
         Lexer {
-            buffer: Lexer::read_file(path).chars().collect(),
+            buffer: source.chars().collect(),
             errors: Vec::new(),
 
             lines: Vec::new(),
@@ -57,6 +104,7 @@ impl Lexer {
 
             literal_numbers: Vec::new(),
             literal_strings: Vec::new(),
+            literal_chars: Vec::new(),
 
             ident_map: HashMap::new(),
             identifiers: Vec::new(),
@@ -191,29 +239,27 @@ impl Lexer {
         }
 
         // Check for TypeLiteral
-        if value.chars().next().unwrap().is_alphabetic() {
-            if (&value[1..]).chars().all(|c| c.is_digit(10)) {
-                let kind = match value.chars().next().unwrap() {
-                    'f' => Some(TokenKind::FloatTypeLiteral),
-                    'i' => Some(TokenKind::IntegerTypeLiteral),
-                    'u' => Some(TokenKind::UnsignedTypeLiteral),
-                    _ => None,
-                };
+        if value.chars().next().unwrap().is_alphabetic() && (&value[1..]).chars().all(|c| c.is_digit(10)){
+            let kind = match value.chars().next().unwrap() {
+                'f' => Some(TokenKind::FloatTypeLiteral),
+                'i' => Some(TokenKind::IntegerTypeLiteral),
+                'u' => Some(TokenKind::UnsignedTypeLiteral),
+                _ => None,
+            };
 
-                match kind {
-                    Some(k) => {
-                        self.tokens.push(Token(self.token_info.len()));
-                        self.token_info.push(TokenInfo::new(
-                            k,
-                            self.lines.len(),
-                            start,
-                            self.literal_numbers.len(),
-                        ));
-                        self.literal_numbers.push((&value[1..]).to_string());
-                        return;
-                    }
-                    None => {}
+            match kind {
+                Some(k) => {
+                    self.tokens.push(Token(self.token_info.len()));
+                    self.token_info.push(TokenInfo::new(
+                        k,
+                        self.lines.len(),
+                        start,
+                        self.literal_numbers.len(),
+                    ));
+                    self.literal_numbers.push((&value[1..]).to_string());
+                    return;
                 }
+                None => {}
             }
         }
 
@@ -419,12 +465,12 @@ impl Lexer {
             TokenKind::Literal(TokenLiteral::Char),
             self.lines.len(),
             start,
-            self.literal_strings.len(),
+            self.literal_chars.len(),
         ));
-        self.literal_strings.push(value);
+        self.literal_chars.push(value.chars().next().unwrap());
     }
 
-    pub fn run(&mut self) {
+    pub fn lex(&mut self) {
         while self.next_line() {
             'line: loop {
                 match self.peek() {
@@ -485,6 +531,7 @@ impl From<&str> for Lexer {
 
             literal_numbers: Vec::new(),
             literal_strings: Vec::new(),
+            literal_chars: Vec::new(),
 
             ident_map: HashMap::new(),
             identifiers: Vec::new(),
@@ -506,6 +553,7 @@ impl From<String> for Lexer {
 
             literal_numbers: Vec::new(),
             literal_strings: Vec::new(),
+            literal_chars: Vec::new(),
 
             ident_map: HashMap::new(),
             identifiers: Vec::new(),
