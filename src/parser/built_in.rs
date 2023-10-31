@@ -26,7 +26,3 @@ macro_rules! built_in {
          )
     }
 }
-
-pub fn temp() {
-    let _ = built_in!(sys exit :: (exit_code: i32));
-}

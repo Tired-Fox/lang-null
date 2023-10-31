@@ -28,6 +28,7 @@ impl Line {
 
 pub struct Lexer {
     buffer: Vec<char>,
+    pub file: Option<String>,
     lines: Vec<Line>,
     column: usize,
 
@@ -79,9 +80,9 @@ impl Lexer {
             let error = self.errors[info.payload].clone();
             if error.1.is_some() {
                 let help = error.1.unwrap();
-                err!(SyntaxError, self.get_loc(token), error.0, help)
+                err!(path=self.file.clone(), span=self.get_loc(token), error.0, help=help)
             } else {
-                err!(SyntaxError, self.get_loc(token), error.0)
+                err!(path=self.file.clone(), span=self.get_loc(token), error.0)
             }
         } else {
             panic!("{:?} is not an error", info);
@@ -145,6 +146,10 @@ impl Lexer {
         }
     }
 
+    pub fn source(&self) -> &[char] {
+        self.buffer.as_slice()
+    }
+
     pub fn errors(&self) -> Vec<Error> {
         self.tokens
             .iter()
@@ -155,17 +160,19 @@ impl Lexer {
 }
 
 impl Lexer {
-    pub fn path<P: AsRef<std::path::Path>>(path: P) -> Self {
-        Lexer::new(fs::read_to_string(path).unwrap().as_str())
+    pub fn with_path<P: AsRef<std::path::Path>>(path: P) -> Self {
+        let file = path.as_ref().to_str().unwrap().to_string();
+        Lexer::new(fs::read_to_string(path).unwrap().as_str(), Some(file))
     }
 
-    pub fn source(source: &str) -> Self {
-        Lexer::new(source.trim())
+    pub fn with_source(source: &str) -> Self {
+        Lexer::new(source.trim(), None)
     }
 
-    fn new(source: &str) -> Self {
+    fn new(source: &str, file: Option<String>) -> Self {
         Lexer {
             buffer: source.chars().collect(),
+            file,
             errors: Vec::new(),
 
             lines: Vec::new(),
@@ -209,10 +216,10 @@ impl Lexer {
 
     fn next(&mut self) -> char {
         match self.lines.last() {
-            None => abort!(SyntaxError, "No lines to read"),
+            None => abort!("No lines to read"),
             Some(last) => {
                 if last.start + self.column >= last.end {
-                    abort!(SyntaxError, "No more characters in the current line");
+                    abort!("No more characters in the current line");
                 }
                 let n = self.buffer[last.start + self.column];
                 self.column += 1;
@@ -339,9 +346,10 @@ impl Lexer {
                             Span::new(first + start, first + start + value.len()),
                             self.errors.len(),
                         ));
+                        let t = value.chars().next().unwrap();
                         self.errors.push((
-                            "Unknown type".to_string(),
-                            Some(vec![format!("Try using {t}8, {t}16, {t}32, {t}64, or {t}128 instead", t=value.chars().next().unwrap())]),
+                            format!("Unknown type `{}{}`", t, &value[1..]),
+                            Some(vec![format!("Try using {t}8, {t}16, {t}32, {t}64, or {t}128 instead", t=t)]),
                         ))
                     }
                 }
@@ -611,13 +619,13 @@ impl Lexer {
 
 impl From<&str> for Lexer {
     fn from(source: &str) -> Self {
-        Lexer::new(source)
+        Lexer::new(source, None)
     }
 }
 
 impl From<String> for Lexer {
     fn from(source: String) -> Self {
-        Lexer::new(source.as_str())
+        Lexer::new(source.as_str(), None)
     }
 }
 

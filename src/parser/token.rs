@@ -1,4 +1,4 @@
-use std::fmt::{Debug, Display};
+use std::fmt::{Debug};
 use std::iter::Peekable;
 use std::ops::Index;
 use crate::error::Error;
@@ -77,11 +77,11 @@ impl Parse for Type {
                         Ok(Type::FloatType(lexer.get_number(&next).unwrap().parse().unwrap()))
                     }
                     _ => {
-                        Err(err!(ParseError, lexer.get_loc(&next), "Expected a type"))
+                        Err(err!(span=lexer.get_loc(&next), "Expected a type"))
                     }
                 }
             }
-            None => Err(err!(ParseError, "Expected a type".to_string()))
+            None => Err(err!("Expected a type".to_string()))
         }
     }
 }
@@ -99,10 +99,10 @@ impl Parse for Segment {
                 }
             }
             eprintln!("Expected an identifier; was {:?}", lexer.get_kind(next));
-            Err(err!(ParseError, lexer.get_loc(next), "Expected an identifier".to_string()))
+            Err(err!(span=lexer.get_loc(next), "Expected an identifier".to_string()))
         } else {
             eprintln!("Expected an identifier; no tokens left");
-            Err(err!(ParseError, "Expected an identifier".to_string()))
+            Err(err!("Expected an identifier".to_string()))
         }
     }
 }
@@ -114,7 +114,7 @@ impl Parse for Path {
     fn parse<'a, T: Iterator<Item=&'a lexer::Token>>(stream: &mut Peekable<T>, lexer: &lexer::Lexer) -> ParseResult<Self> {
         let start = match stream.peek() {
             Some(next) => lexer.get_loc(next),
-            None => return Err(err!(ParseError, "Expected path".to_string())),
+            None => return Err(err!("Expected path".to_string())),
         };
 
         let mut segments = Vec::new();
@@ -131,7 +131,7 @@ impl Parse for Path {
         }
 
         if segments.is_empty() {
-            Err(err!(ParseError, start.clone(), "Expected path".to_string()))
+            Err(err!(span=start.clone(), "Expected path".to_string()))
         } else {
             Ok(Path(segments))
         }
@@ -153,12 +153,12 @@ impl Parse for Argument {
                     }
                 } else {
                     eprintln!("Invalid argument syntax; expected `:`");
-                    return Err(err!(ParseError, lexer.get_loc(next), "Invalid argument syntax; expected `:`".to_string()));
+                    return Err(err!(span=lexer.get_loc(next), "Invalid argument syntax; expected `:`".to_string()));
                 }
             }
             None => {
                 eprintln!("Invalid argument syntax; expected argument type");
-                return Err(err!(ParseError, "Invalid argument syntax; expected argument type".to_string()));
+                return Err(err!("Invalid argument syntax; expected argument type".to_string()));
             }
         };
         Ok(Argument { name, arg_type })
@@ -259,10 +259,10 @@ impl Parse for Parameter {
                             }
                         })
                     }
-                    _ => Err(err!(ParseError, lexer.get_loc(&next), "Invalid parameter syntax".to_string()))
+                    _ => Err(err!(span=lexer.get_loc(&next), "Invalid parameter syntax".to_string()))
                 }
             }
-            None => Err(err!(ParseError, "Expected parameter".to_string()))
+            None => Err(err!("Expected parameter".to_string()))
         }
     }
 }

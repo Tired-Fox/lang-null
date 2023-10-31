@@ -1,7 +1,8 @@
 extern crate null;
 
 use null::compiler::Compiler;
-use null::lexer;
+use null::error::Errors;
+
 use null::lexer::Lexer;
 use null::parser::Parser;
 
@@ -17,7 +18,8 @@ const SOURCE: &'static str = r#"
 main :: fn(exit_code: i32) {
 }
 main(12)
-exit(12); f256
+exit(12);
+f256
 "#;
 
 fn parse() {
@@ -26,12 +28,11 @@ fn parse() {
 }
 
 fn lex() {
-    let mut lexer = Lexer::source(SOURCE);
+    // let mut lexer = Lexer::source(SOURCE);
+    let mut lexer = Lexer::with_path("assets/null/main.nl");
     lexer.lex();
 
-    for error in lexer.errors() {
-        eprintln!("{}", error);
-    }
+    Errors(lexer.errors()).render(lexer.source());
 }
 
 fn main() {

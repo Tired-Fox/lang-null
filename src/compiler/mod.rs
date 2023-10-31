@@ -146,17 +146,17 @@ impl Compiler {
             match token {
                 Token::Decleration(decl) => {
                     match decl {
-                        Declaration::Function(name, args, body) => {
+                        Declaration::Function(_name, _args, _body) => {
                             todo!("Implement function declaration")
                         }
-                        Declaration::Variable(name, value) => {
+                        Declaration::Variable(_name, _value) => {
                             todo!("Implement variable declaration")
                         }
                     }
                 }
                 Token::Call(call) => {
                     match call {
-                        Call::Call(name, args) => {
+                        Call::Call(_name, _args) => {
                             todo!("Implement function call")
                         }
                         Call::Syscall(name, args) => {
@@ -202,7 +202,7 @@ impl Compiler {
                         }
                     }
                 }
-                _ => abort!(CompilerError, "Only function declarations and function calls are allowed in the global scope")
+                _ => abort!("Only function declarations and function calls are allowed in the global scope")
             }
         }
 
@@ -234,7 +234,7 @@ impl Compiler {
             Target::root("obj").join(name.to_string() + ".obj").display().to_string().as_str(),
             self.externals
                 .iter()
-                .map(|(name, link)| link.to_string())
+                .map(|(_name, link)| link.to_string())
                 .collect::<Vec<String>>().join(" "),
             Target::root("build").join(name.to_string() + Target::executable()).display().to_string().as_str(),
         );
@@ -247,7 +247,7 @@ impl Compiler {
             ])
             .args(self.externals
                 .iter()
-                .map(|(name, link)| link.to_string())
+                .map(|(_name, link)| link.to_string())
                 .collect::<Vec<String>>()
                 .as_slice())
             .args([

@@ -66,7 +66,7 @@ pub fn exit(exit_code: i32) -> SyscallRet {
     )
 }
 
-pub fn print(location: String, length: usize) -> SyscallRet {
+pub fn print(location: String, _length: usize) -> SyscallRet {
     platform!(
         "windows",
         nasm![

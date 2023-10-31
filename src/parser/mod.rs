@@ -68,11 +68,11 @@ impl Parser {
     }
 
     pub fn path<P: AsRef<std::path::Path>>(path: P) -> Self {
-        Parser::new(Lexer::path(path))
+        Parser::new(Lexer::with_path(path))
     }
 
     pub fn source(source: &str) -> Self {
-        Parser::new(Lexer::source(source))
+        Parser::new(Lexer::with_source(source))
     }
 
     pub fn new(lexer: Lexer) -> Parser {
@@ -103,29 +103,26 @@ impl Parser {
                     }
                     if !closed {
                         abort!(
-                            ParseError,
-
-                            start,
+                            path=self.lexer.file.clone(),
+                            span=start,
                             "`{` was never closed",
-                            help="Try adding `}`"
+                            help=["Try adding `}`"]
                         )
                     }
                 } else {
                     abort!(
-                        ParseError,
-
-                        start,
+                        path=self.lexer.file.clone(),
+                        span=start,
                         "`{` was never closed",
-                        help="Try adding `}`"
+                        help=["Try adding `}`"]
                     )
                 }
             }
             None => {
                 let location = self.lexer.curr_loc();
                 abort!(
-                    ParseError,
-
-                    location,
+                    path=self.lexer.file.clone(),
+                    span=location,
                     "Expected `{`"
                 )
             }
@@ -162,12 +159,12 @@ impl Parser {
         if let Some(ident) = ident {
             if let Some(scope) = self.scopes.last() {
                 if let Some(index) = scope.functions.get(ident) {
-                    if let Token::Decleration(token::Declaration::Function(name, args, block)) = &self.tokens[*index] {
+                    if let Token::Decleration(token::Declaration::Function(_name, args, _block)) = &self.tokens[*index] {
                         let cargs = self.group::<Parameter, ',', T>(tokens);
                         if args.len() != cargs.len() {
-                            abort!(ParseError,
-
-                                self.lexer.get_loc(token),
+                            abort!(
+                                path=self.lexer.file.clone(),
+                                span=self.lexer.get_loc(token),
                                 format!("Expected {} arguments; found {}", args.len(), cargs.len())
                             );
                         }
@@ -204,7 +201,7 @@ impl Parser {
                                 Some(self.block(tokens))
                             } else {
                                 let location = self.lexer.get_loc(next);
-                                abort!(ParseError,  location, "Expected `;` or `{`")
+                                abort!(path=self.lexer.file.clone(), span=location, "Expected `;` or `{`")
                             }
                         }
                         None => None
@@ -215,11 +212,11 @@ impl Parser {
                         block,
                     )))
                 } else {
-                    abort!(ParseError,  self.lexer.get_loc(token), "Expected `fn` keyword")
+                    abort!(path=self.lexer.file.clone(), span=self.lexer.get_loc(token), "Expected `fn` keyword")
                 }
             }
             None => {
-                abort!(ParseError,  self.lexer.get_loc(token), "Expected function declaration", help="Try adding `fn`")
+                abort!(path=self.lexer.file.clone(), span=self.lexer.get_loc(token), "Expected function declaration", help=["Try adding `fn`"])
             }
         }
     }
@@ -258,7 +255,7 @@ impl Parser {
                                         }
                                     }
                                     None => {
-                                        abort!(ParseError,  self.lexer.get_loc(token), "Expected function declaration or const assignment");
+                                        abort!(path=self.lexer.file.clone(), span=self.lexer.get_loc(token), "Expected function declaration or const assignment");
                                     }
                                 }
                             }
@@ -282,12 +279,12 @@ impl Parser {
                                             match self.lexer.get_kind(next) {
                                                 lexer::TokenKind::Symbol(lexer::TokenSymbol::Semicolon) => {}
                                                 _ => {
-                                                    abort!(ParseError,  self.lexer.get_loc(next), "Expected `;` after function call");
+                                                    abort!(path=self.lexer.file.clone(), span=self.lexer.get_loc(next), "Expected `;` after function call");
                                                 }
                                             }
                                         }
                                         None => {
-                                            abort!(ParseError,  self.lexer.get_loc(token), "Expected `;` after function call");
+                                            abort!(path=self.lexer.file.clone(), span=self.lexer.get_loc(token), "Expected `;` after function call");
                                         }
                                     }
                                 }
@@ -300,17 +297,17 @@ impl Parser {
                         }
                     }
                     _ => {
-                        abort!(ParseError,  self.lexer.get_loc(next), "Expected ::, :, or = symbol following identifier")
+                        abort!(path=self.lexer.file.clone(), span=self.lexer.get_loc(next), "Expected ::, :, or = symbol following identifier")
                     }
                 };
             }
             None => {
-                abort!(ParseError,  self.lexer.curr_loc(), "Expected declaration or assignment");
+                abort!(path=self.lexer.file.clone(), span=self.lexer.curr_loc(), "Expected declaration or assignment");
             }
         }
     }
 
-    pub fn keyword_action<'a, T: Iterator<Item=&'a lexer::Token>>(&mut self, token: &lexer::Token, tokens: &mut Peekable<T>) {}
+    pub fn keyword_action<'a, T: Iterator<Item=&'a lexer::Token>>(&mut self, _token: &lexer::Token, _tokens: &mut Peekable<T>) {}
 
     pub fn parse(&mut self) {
         // First lex the source
@@ -332,7 +329,7 @@ impl Parser {
                     self.keyword_action(token, &mut tokens);
                 }
                 val => {
-                    abort!(ParseError,  self.lexer.curr_loc(), format!("Unknown syntax {:?}", val))
+                    abort!(path=self.lexer.file.clone(),  span=self.lexer.curr_loc(), format!("Unknown syntax {:?}", val))
                 }
             }
         }

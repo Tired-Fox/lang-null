@@ -3,7 +3,7 @@ use std::fmt::Display;
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use proc_macro_error::abort;
 use quote::ToTokens;
-use syn::{braced, bracketed, ext::IdentExt, Ident, Lit, LitInt, LitStr, parenthesized, punctuated::Punctuated, token::{Brace, Bracket, Paren}, Token};
+use syn::{braced, bracketed, ext::IdentExt, Ident, Lit, LitInt, LitStr, parenthesized, token::{Brace, Bracket, Paren}, Token};
 
 use super::Expr;
 
@@ -188,15 +188,15 @@ impl syn::parse::Parse for Token {
                     break;
                 } else {
                     if Symbol::peek(input) {
-                            tokens.push(input.parse::<Symbol>()?.to_string())
-                        }else  {
-                            match input.parse::<syn::Expr>() {
-                                Ok(expr) => tokens.push(expr.to_token_stream().to_string()),
-                                Err(_) => {
-                                    return Err(syn::Error::new(input.span(), "Not a valid expression inside a nasm comment"))
-                                }
+                        tokens.push(input.parse::<Symbol>()?.to_string())
+                    } else {
+                        match input.parse::<syn::Expr>() {
+                            Ok(expr) => tokens.push(expr.to_token_stream().to_string()),
+                            Err(_) => {
+                                return Err(syn::Error::new(input.span(), "Not a valid expression inside a nasm comment"));
                             }
                         }
+                    }
                 }
             }
             return Ok(Token::Comment(start.span, tokens.join(" ")));
@@ -207,7 +207,6 @@ impl syn::parse::Parse for Token {
             let brace;
             braced!(brace in input);
             let val = brace.parse::<TokenStream2>()?;
-            println!("Injection: {}", val);
             return Ok(Token::Injection(brace.span(), val));
         } else if input.peek(Bracket) {
             let bracket;

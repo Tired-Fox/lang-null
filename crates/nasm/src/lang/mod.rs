@@ -130,7 +130,7 @@ impl Display for NASM {
                 Node::Label(_, val) => {
                     parts.push(format!("{}: {}", val, label_width(val.len() + 2)));
                 },
-                Node::Injection(_, val) => {
+                Node::Injection(_, _) => {
                     parts.push("\n{}\n".to_string());
                 }
             }
