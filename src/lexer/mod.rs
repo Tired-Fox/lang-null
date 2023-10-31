@@ -1,10 +1,13 @@
 use std::collections::HashMap;
 use std::fs;
 
-pub mod token;
-
-pub use self::token::{ErrorInfo, NumberLiteral, TokenKeyword, TokenLiteral, TokenSymbol};
 pub use token::{Token, TokenInfo, TokenKind};
+
+pub use self::token::{NumberLiteral, TokenKeyword, TokenLiteral, TokenSymbol};
+use crate::error::{abort, Error};
+use crate::{err, Location, Span};
+
+pub mod token;
 
 /// Information for location of a line in source
 #[derive(Debug, Clone, Copy)]
@@ -34,51 +37,120 @@ pub struct Lexer {
     pub literal_strings: Vec<String>,
     pub literal_chars: Vec<char>,
 
-    pub errors: Vec<ErrorInfo>,
+    pub errors: Vec<(String, Option<Vec<String>>)>,
 
     ident_map: HashMap<String, usize>,
     pub identifiers: Vec<String>,
 }
 
 impl Lexer {
+    pub fn debug(&self, token: &Token) -> String {
+        let info = self.get_info(token);
+        match info.kind {
+            TokenKind::Symbol(symbol) => symbol.to_string(),
+            TokenKind::Literal(literal) => match literal {
+                TokenLiteral::Number => {
+                    format!("\x1b[35m{:?}\x1b[39m", self.get_number(token).unwrap())
+                }
+                TokenLiteral::String => {
+                    format!("\x1b[32m{:?}\x1b[39m", self.get_string(token).unwrap())
+                }
+                TokenLiteral::Char => {
+                    format!("\x1b[33m'{}'\x1b[39m", self.get_char(token).unwrap())
+                }
+            },
+            TokenKind::Keyword(keyword) => keyword.to_string(),
+            TokenKind::Identifier => format!("\x1b[33m{}\x1b[39m", self.get_ident(token).unwrap()),
+            TokenKind::IntegerTypeLiteral => format!("\x1b[33mi{}\x1b[39m", self.get_number(token).unwrap()),
+            TokenKind::UnsignedTypeLiteral => format!("\x1b[33mu{}\x1b[39m", self.get_number(token).unwrap()),
+            TokenKind::FloatTypeLiteral => format!("\x1b[33mf{}\x1b[39m", self.get_number(token).unwrap()),
+            TokenKind::Error => "\x1b[1;31mError\x1b[22;39m".to_string(),
+            TokenKind::EOF => "\x1b[36mEOF\x1b[22;39m".to_string(),
+        }
+    }
+
+    pub fn get_info(&self, token: &Token) -> &TokenInfo {
+        &self.token_info[token.0]
+    }
+
+    pub fn get_error(&self, token: &Token) -> Error {
+        let info = self.get_info(token);
+        if self.get_kind(token) == TokenKind::Error {
+            let error = self.errors[info.payload].clone();
+            if error.1.is_some() {
+                let help = error.1.unwrap();
+                err!(SyntaxError, self.get_loc(token), error.0, help)
+            } else {
+                err!(SyntaxError, self.get_loc(token), error.0)
+            }
+        } else {
+            panic!("{:?} is not an error", info);
+        }
+    }
+
     pub fn get_ident(&self, token: &Token) -> Option<&String> {
-        if self.token_info[token.0].kind == TokenKind::Identifier {
-            Some(&self.identifiers[self.token_info[token.0].payload])
+        if self.get_kind(token) == TokenKind::Identifier {
+            Some(&self.identifiers[self.get_info(token).payload])
         } else {
             None
         }
     }
 
     pub fn get_kind(&self, token: &Token) -> TokenKind {
-        self.token_info[token.0].kind
+        self.get_info(token).kind
     }
 
     pub fn get_number(&self, token: &Token) -> Option<&String> {
-        if self.token_info[token.0].kind == TokenKind::Literal(TokenLiteral::Number) {
-            Some(&self.literal_numbers[self.token_info[token.0].payload])
+        let kind = self.get_kind(token);
+        if kind == TokenKind::Literal(TokenLiteral::Number)
+            || kind == TokenKind::IntegerTypeLiteral
+            || kind == TokenKind::UnsignedTypeLiteral
+            || kind == TokenKind::FloatTypeLiteral {
+            Some(&self.literal_numbers[self.get_info(token).payload])
         } else {
             None
         }
     }
 
     pub fn get_string(&self, token: &Token) -> Option<&String> {
-        if self.token_info[token.0].kind == TokenKind::Literal(TokenLiteral::String) {
-            Some(&self.literal_strings[self.token_info[token.0].payload])
+        if self.get_kind(token) == TokenKind::Literal(TokenLiteral::String) {
+            Some(&self.literal_strings[self.get_info(token).payload])
         } else {
             None
         }
     }
 
     pub fn get_char(&self, token: &Token) -> Option<char> {
-        if self.token_info[token.0].kind == TokenKind::Literal(TokenLiteral::Char) {
-            Some(self.literal_chars[self.token_info[token.0].payload])
+        if self.get_kind(token) == TokenKind::Literal(TokenLiteral::Char) {
+            Some(self.literal_chars[self.get_info(token).payload])
         } else {
             None
         }
     }
 
-    pub fn get_loc(&self, token: &Token) -> (usize, usize) {
-        (self.token_info[token.0].line, self.token_info[token.0].column)
+    pub fn get_loc(&self, token: &Token) -> Location {
+        let info = self.get_info(token);
+        Location::new(info.line, info.column, info.span)
+    }
+
+    pub fn curr_loc(&self) -> Location {
+        let start = self.lines.last().unwrap().start;
+        Location::new(self.lines.len(), self.column, Span::new(start, start + self.column))
+    }
+
+    pub fn extract(&self, span: &Span) -> &[char] {
+        if span.start() > span.end() { panic!("Start must be less than the end value; was {}", span.start()) }
+        else if span.end() > self.buffer.len() { panic!("End must be less than the source length; was {}", span.end()) } else {
+            &self.buffer[span.start()..span.end()]
+        }
+    }
+
+    pub fn errors(&self) -> Vec<Error> {
+        self.tokens
+            .iter()
+            .filter(|t| TokenKind::Error == self.get_kind(t))
+            .map(|t| self.get_error(t))
+            .collect()
     }
 }
 
@@ -88,7 +160,7 @@ impl Lexer {
     }
 
     pub fn source(source: &str) -> Self {
-        Lexer::new(source)
+        Lexer::new(source.trim())
     }
 
     fn new(source: &str) -> Self {
@@ -137,14 +209,14 @@ impl Lexer {
 
     fn next(&mut self) -> char {
         match self.lines.last() {
-            None => panic!("No lines to read"),
+            None => abort!(SyntaxError, "No lines to read"),
             Some(last) => {
                 if last.start + self.column >= last.end {
-                    panic!("No more characters in the current line");
+                    abort!(SyntaxError, "No more characters in the current line");
                 }
                 let n = self.buffer[last.start + self.column];
                 self.column += 1;
-                return n;
+                n
             }
         }
     }
@@ -196,50 +268,48 @@ impl Lexer {
         }
     }
 
-    fn get_start(&self) -> usize {
-        if self.column == 0 {
-            self.column + 1
-        } else {
-            self.column
-        }
+    fn get_column(&self, column: usize) -> usize {
+        column + 1
     }
 
     fn keyword_or_ident(&mut self) {
         let mut value = String::new();
-        let start = self.get_start();
+        let start = self.column;
 
         loop {
             match self.peek() {
-                Some(c) if c.is_alphabetic() || c == '_' || c.is_digit(10) => {
+                Some(c) if c.is_alphabetic() || c == '_' || c.is_ascii_digit() => {
                     value.push(self.next());
                 }
                 _ => break,
             }
         }
 
-        if value.len() == 0
+        let first = self.lines.last().unwrap().start;
+        if value.is_empty()
             || (!value.chars().next().unwrap().is_alphabetic()
-                && value.chars().next().unwrap() != '_')
+            && !value.starts_with('_'))
         {
             self.tokens.push(Token(self.token_info.len()));
             self.token_info.push(TokenInfo::new(
                 TokenKind::Error,
                 self.lines.len(),
-                self.get_start(),
+                self.get_column(start),
+                Span::new(first + start, first + start + value.len()),
                 self.errors.len(),
             ));
-            self.errors.push(ErrorInfo::new(
-                value.len(),
+            self.errors.push((
                 format!(
                     "Expected alpha char or underscore: found {:?}",
                     value.chars().next().unwrap()
                 ),
+                None
             ));
             return;
         }
 
         // Check for TypeLiteral
-        if value.chars().next().unwrap().is_alphabetic() && (&value[1..]).chars().all(|c| c.is_digit(10)){
+        if value.chars().next().unwrap().is_alphabetic() && (value[1..]).chars().all(|c| c.is_ascii_digit()) {
             let kind = match value.chars().next().unwrap() {
                 'f' => Some(TokenKind::FloatTypeLiteral),
                 'i' => Some(TokenKind::IntegerTypeLiteral),
@@ -247,19 +317,34 @@ impl Lexer {
                 _ => None,
             };
 
-            match kind {
-                Some(k) => {
-                    self.tokens.push(Token(self.token_info.len()));
-                    self.token_info.push(TokenInfo::new(
-                        k,
-                        self.lines.len(),
-                        start,
-                        self.literal_numbers.len(),
-                    ));
-                    self.literal_numbers.push((&value[1..]).to_string());
-                    return;
+            if let Some(k) = kind {
+                match u8::from_str_radix(&value[1..], 10) {
+                    Ok(val) if [8, 16, 32, 64, 128].contains(&val) => {
+                        self.tokens.push(Token(self.token_info.len()));
+                        self.token_info.push(TokenInfo::new(
+                            k,
+                            self.lines.len(),
+                            self.get_column(start),
+                            Span::new(first + start, first + start + value.len()),
+                            self.literal_numbers.len(),
+                        ));
+                        self.literal_numbers.push((value[1..]).to_string());
+                    },
+                    _ => {
+                        self.tokens.push(Token(self.token_info.len()));
+                        self.token_info.push(TokenInfo::new(
+                            TokenKind::Error,
+                            self.lines.len(),
+                            self.get_column(start),
+                            Span::new(first + start, first + start + value.len()),
+                            self.errors.len(),
+                        ));
+                        self.errors.push((
+                            "Unknown type".to_string(),
+                            Some(vec![format!("Try using {t}8, {t}16, {t}32, {t}64, or {t}128 instead", t=value.chars().next().unwrap())]),
+                        ))
+                    }
                 }
-                None => {}
             }
         }
 
@@ -271,10 +356,10 @@ impl Lexer {
 
         let payload = match kind {
             TokenKind::Identifier => match self.ident_map.contains_key(&value) {
-                true => self.ident_map.get(&value).unwrap().clone(),
+                true => self.ident_map.get(&value).unwrap().to_owned(),
                 false => {
                     self.ident_map.insert(value.clone(), self.identifiers.len());
-                    self.identifiers.push(value);
+                    self.identifiers.push(value.clone());
                     self.identifiers.len() - 1
                 }
             },
@@ -283,43 +368,51 @@ impl Lexer {
 
         self.tokens.push(Token(self.token_info.len()));
         self.token_info
-            .push(TokenInfo::new(kind, self.lines.len(), start, payload));
+            .push(TokenInfo::new(
+                kind,
+                self.lines.len(),
+                self.get_column(start),
+                Span::new(first + start, first + start + value.len()),
+                payload,
+            ));
     }
 
     fn symbol(&mut self) {
         let mut value = String::new();
-        let start = self.get_start();
+        let start = self.column;
 
+        let mut symbol = None;
+        // try longest to shortest combinations (Greedy)
+        // Slowly build longest symbol possible until failure
         loop {
-            match self.peek() {
-                Some(c) if !c.is_alphabetic() && !c.is_whitespace() && !c.is_digit(10) => {
-                    value.push(self.next());
+            let new = match self.peek() {
+                Some(c) if !c.is_alphabetic() && !c.is_whitespace() && !c.is_ascii_digit() => {
+                    value.push(c);
+                    TokenSymbol::make(value.as_str())
                 }
                 _ => break,
+            };
+
+            if new.is_none() {
+                value = value[..value.len() - 1].to_string();
+                break;
+            } else {
+                let _ = self.next();
+                symbol = new;
             }
         }
 
-        // try longest to shortest combinations (Greedy)
-        let mut kind: Option<TokenKind> = None;
-        for i in 0..value.len() {
-            match TokenSymbol::make(&value[..value.len() - i]) {
-                Some(symbol) => {
-                    kind = Some(TokenKind::Symbol(symbol));
-                    // Move current char back to what was actually consumed
-                    self.column -= i;
-                    break;
-                }
-                None => {}
-            }
-        }
+        let kind: Option<TokenKind> = symbol.map(TokenKind::Symbol);
 
+        let first = self.lines.last().unwrap().start;
         match kind {
             Some(k) => {
                 self.tokens.push(Token(self.token_info.len()));
                 self.token_info.push(TokenInfo::new(
                     k,
                     self.lines.len(),
-                    start,
+                    self.get_column(start),
+                    Span::new(first + start, first + start + value.len()),
                     0, /* Possible open or close linking */
                 ))
             }
@@ -328,36 +421,36 @@ impl Lexer {
                 self.token_info.push(TokenInfo::new(
                     TokenKind::Error,
                     self.lines.len(),
-                    start,
+                    self.get_column(start),
+                    Span::new(first + start, first + start + value.len()),
                     self.errors.len(),
                 ));
-                self.errors.push(ErrorInfo::new(
-                    value.len(),
-                    format!("Unkown symbol {:?}", value),
-                ));
+                self.errors.push((format!("Unkown symbol {:?}", value), None));
             }
         }
     }
 
     fn digit(&mut self) {
         let mut value = String::new();
-        let start = self.get_start();
+        let start = self.column;
 
         loop {
             match self.peek() {
-                Some(c) if c.is_digit(10) || c.is_alphabetic() || "_-+".contains(c) => {
+                Some(c) if c.is_ascii_digit() || c.is_alphabetic() || "_-+".contains(c) => {
                     value.push(self.next());
                 }
                 _ => break,
             }
         }
 
+        let first = self.lines.last().unwrap().start;
         if NumberLiteral::verify(&value) {
             self.tokens.push(Token(self.token_info.len()));
             self.token_info.push(TokenInfo::new(
                 TokenKind::Literal(TokenLiteral::Number),
                 self.lines.len(),
-                start,
+                self.get_column(start),
+                Span::new(first + start, first + start + value.len()),
                 self.literal_numbers.len(),
             ));
             self.literal_numbers.push(value);
@@ -366,19 +459,17 @@ impl Lexer {
             self.token_info.push(TokenInfo::new(
                 TokenKind::Error,
                 self.lines.len(),
-                start,
+                self.get_column(start),
+                Span::new(first + start, first + start + value.len()),
                 self.errors.len(),
             ));
-            self.errors.push(ErrorInfo::new(
-                value.len(),
-                format!("Invalid number format"),
-            ))
+            self.errors.push(("Invalid number format".to_string(), None))
         }
     }
 
     pub fn string(&mut self) {
         let mut value = String::new();
-        let start = (self.lines.len(), self.get_start());
+        let start = (self.lines.len(), self.column);
         self.next();
 
         let mut escaped = false;
@@ -402,11 +493,13 @@ impl Lexer {
             }
         }
 
+        let first = self.lines.last().unwrap().start;
         self.tokens.push(Token(self.token_info.len()));
         self.token_info.push(TokenInfo::new(
             TokenKind::Literal(TokenLiteral::String),
             start.0,
-            start.1,
+            self.get_column(start.1),
+            Span::new(first + start.1, first + start.1 + value.len()),
             self.literal_strings.len(),
         ));
         self.literal_strings.push(value);
@@ -414,7 +507,7 @@ impl Lexer {
 
     fn char(&mut self) {
         let mut value = String::new();
-        let start = self.get_start();
+        let start = self.column;
         self.next();
 
         let mut escaped = false;
@@ -428,17 +521,16 @@ impl Lexer {
                     break;
                 }
                 None => {
+                    let first = self.lines.last().unwrap().start;
                     self.tokens.push(Token(self.token_info.len()));
                     self.token_info.push(TokenInfo::new(
                         TokenKind::Error,
                         self.lines.len(),
-                        start,
+                        self.get_column(start),
+                        Span::new(first + start, first + start + value.len()),
                         self.errors.len(),
                     ));
-                    self.errors.push(ErrorInfo::new(
-                        self.column - start,
-                        "Unterminated character literal".to_string(),
-                    ))
+                    self.errors.push(("Unterminated character literal".to_string(), Some(vec!["Try adding `'`".to_string()])))
                 }
                 _ => {
                     value.push(self.next());
@@ -446,25 +538,25 @@ impl Lexer {
             }
         }
 
+        let first = self.lines.last().unwrap().start;
         if value.len() != 1 {
             self.tokens.push(Token(self.token_info.len()));
             self.token_info.push(TokenInfo::new(
                 TokenKind::Error,
                 self.lines.len(),
-                start,
+                self.get_column(start),
+                Span::new(first + start, first + start + value.len()),
                 self.errors.len(),
             ));
-            self.errors.push(ErrorInfo::new(
-                value.len() + 2,
-                "Length of character literal must be 1".to_string(),
-            ))
+            self.errors.push(("Length of character literal must be 1".to_string(), None))
         }
 
         self.tokens.push(Token(self.token_info.len()));
         self.token_info.push(TokenInfo::new(
             TokenKind::Literal(TokenLiteral::Char),
             self.lines.len(),
-            start,
+            self.get_column(start),
+            Span::new(first + start, first + start + value.len()),
             self.literal_chars.len(),
         ));
         self.literal_chars.push(value.chars().next().unwrap());
@@ -507,62 +599,32 @@ impl Lexer {
         self.token_info.push(TokenInfo::new(
             TokenKind::EOF,
             self.lines.len(),
-            self.get_start(),
+            self.get_column(self.column),
+            Span::new(0, self.buffer.len()),
             0,
         ));
 
-        // Deallocate buffer & map memory
-        self.buffer = Vec::new();
+        // Deallocate map memory
         self.ident_map = HashMap::new();
     }
 }
 
 impl From<&str> for Lexer {
     fn from(source: &str) -> Self {
-        Lexer {
-            buffer: source.chars().collect(),
-            errors: Vec::new(),
-
-            lines: Vec::new(),
-            column: 0,
-
-            tokens: Vec::new(),
-            token_info: Vec::new(),
-
-            literal_numbers: Vec::new(),
-            literal_strings: Vec::new(),
-            literal_chars: Vec::new(),
-
-            ident_map: HashMap::new(),
-            identifiers: Vec::new(),
-        }
+        Lexer::new(source)
     }
 }
 
 impl From<String> for Lexer {
     fn from(source: String) -> Self {
-        Lexer {
-            buffer: source.chars().collect(),
-            errors: Vec::new(),
-
-            lines: Vec::new(),
-            column: 0,
-
-            tokens: Vec::new(),
-            token_info: Vec::new(),
-
-            literal_numbers: Vec::new(),
-            literal_strings: Vec::new(),
-            literal_chars: Vec::new(),
-
-            ident_map: HashMap::new(),
-            identifiers: Vec::new(),
-        }
+        Lexer::new(source.as_str())
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn peek() {
         let mut lexer = Lexer::from("    let x: i32 = 0;");
@@ -609,11 +671,10 @@ mod tests {
         lexer.next();
     }
 
-    use super::*;
     #[test]
     fn empty_lex() {
         let mut lexer = Lexer::from("");
-        lexer.run();
+        lexer.lex();
         assert_eq!(lexer.tokens.len(), 1);
         assert_eq!(lexer.token_info.len(), 1);
         assert_eq!(lexer.lines.len(), 0);
@@ -629,7 +690,7 @@ fn main() {
 }";
 
         let mut lexer = Lexer::from(source);
-        lexer.run();
+        lexer.lex();
         assert_eq!(lexer.lines.len(), 4);
         assert_eq!(lexer.tokens.len(), 19);
         assert_eq!(lexer.token_info.len(), 19);

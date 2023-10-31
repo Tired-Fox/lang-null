@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use nasm_to_string::nasm;
-use crate::lexer::Lexer;
+use crate::abort;
 
 use crate::parser::{Parser, token::{Declaration, Token}};
 use crate::parser::token::{Call, Literal, Parameter};
@@ -67,10 +67,13 @@ impl Builder {
         Compiler {
             _nasm_root: self.nasm,
             _link_root: self.link,
+
             parser: Parser::path(path),
-            result: String::new(),
-            chunks: Vec::new(),
             externals: HashMap::new(),
+
+            chunks: Vec::new(),
+            methods: Vec::new(),
+            data: Vec::new(),
         }.compile(name.as_str());
     }
 
@@ -78,10 +81,13 @@ impl Builder {
         Compiler {
             _nasm_root: self.nasm,
             _link_root: self.link,
+
             parser: Parser::source(source),
-            result: String::new(),
-            chunks: Vec::new(),
             externals: HashMap::new(),
+
+            chunks: Vec::new(),
+            methods: Vec::new(),
+            data: Vec::new(),
         }.compile(name);
     }
 }
@@ -91,8 +97,11 @@ pub struct Compiler {
     _link_root: PathBuf,
 
     parser: Parser,
-    result: String,
     chunks: Vec<String>,
+
+    methods: Vec<String>,
+    data: Vec<String>,
+
     // External name to external link
     externals: HashMap<String, String>,
 }
@@ -113,8 +122,10 @@ impl Compiler {
     fn new(parser: Parser) -> Compiler {
         Compiler {
             parser,
-            result: String::new(),
             chunks: Vec::new(),
+            methods: Vec::new(),
+            data: Vec::new(),
+
             externals: HashMap::new(),
 
             _nasm_root: PathBuf::new(),
@@ -125,6 +136,11 @@ impl Compiler {
     fn assemble(&mut self, name: &str) {
         // First parse the source
         self.parser.parse();
+
+        let global = self.parser.global();
+        if global.get_function("main").is_none() {
+            panic!("Main function is missing");
+        }
 
         for token in self.parser.tokens.iter() {
             match token {
@@ -183,11 +199,10 @@ impl Compiler {
                                 }
                                 _ => {}
                             }
-                            println!("Compile syscall {} with {:?}", name.0, args);
                         }
                     }
                 }
-                _ => todo!("Implement all other tokens being compiled")
+                _ => abort!(CompilerError, "Only function declarations and function calls are allowed in the global scope")
             }
         }
 
@@ -214,7 +229,7 @@ impl Compiler {
     }
 
     fn link(&self, name: &str) {
-        println!("{} /console /entry start {} {} /fo {}",
+        println!("{} /console /entry __null_main {} {} /fo {}",
             Target::exe_with_root(&self._link_root, "GoLink"),
             Target::root("obj").join(name.to_string() + ".obj").display().to_string().as_str(),
             self.externals
@@ -270,15 +285,21 @@ impl Compiler {
 impl Display for Compiler {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let assembly = nasm! {
-                    global start
-                    {
-                        self.externals.keys().map(|name| {
-                            format!("extern {}", name)
-                        }).collect::<Vec<_>>().join("\n")
-                    }
-                    section .text
-            start:
+            global __null_main
+            {
+                self.externals.keys().map(|name| {
+                    format!("extern {}", name)
+                }).collect::<Vec<_>>().join("\n")
+            }
+
+            section .text
+            {self.methods.join("\n")}
+
+            __null_main:
                 {self.chunks.join("\n\n")}
+
+            section .data
+            {self.data.join("\n")}
         };
 
         write!(

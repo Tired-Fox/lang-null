@@ -1,10 +1,11 @@
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::iter::Peekable;
 
+use crate::{abort, lexer};
 use crate::compiler::syscall;
-use crate::lexer;
 use crate::lexer::Lexer;
-use crate::parser::token::{Argument, Parameter, Parse, Punctuated, Token};
+use crate::parser::token::{Argument, Block, Parameter, Parse, Token};
 
 pub mod token;
 mod built_in;
@@ -22,7 +23,7 @@ mod built_in;
 //      - Scope has functions
 //      - Scope stack with all of methods, variables, and functions referencing what scope they come from
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Scope {
     variables: HashMap<String, usize>,
     functions: HashMap<String, usize>,
@@ -37,11 +38,16 @@ impl Scope {
         self.variables.insert(name, variable);
     }
 
+    pub fn get_function(&self, name: &str) -> Option<usize> {
+        self.functions.get(name).cloned()
+    }
+
+    pub fn get_variable(&self, name: &str) -> Option<usize> {
+        self.functions.get(name).cloned()
+    }
+
     pub fn new() -> Scope {
-        Scope {
-            variables: HashMap::new(),
-            functions: HashMap::new(),
-        }
+        Scope::default()
     }
 
     // pub fn inherit(&self, variables: &mut HashMap<String, &Decleration>, functions: &mut HashMap<String, &Decleration>) {
@@ -57,6 +63,10 @@ pub struct Parser {
 }
 
 impl Parser {
+    pub fn global(&self) -> &Scope {
+        self.scopes.first().unwrap()
+    }
+
     pub fn path<P: AsRef<std::path::Path>>(path: P) -> Self {
         Parser::new(Lexer::path(path))
     }
@@ -76,25 +86,72 @@ impl Parser {
         }
     }
 
-    pub fn group<'a, V: Parse, const N: char, T: Iterator<Item=&'a lexer::Token>>(&self, tokens: &mut Peekable<T>) -> token::Punctuated<V, N> {
+    pub fn block<'a, T: Iterator<Item=&'a lexer::Token>>(&self, tokens: &mut Peekable<T>) -> Block {
+        let mut inner = Vec::new();
         match tokens.next() {
             Some(next) => {
-                if let lexer::TokenKind::Symbol(lexer::TokenSymbol::OpenParen) = self.lexer.get_kind(next) {
-                    let args = token::Punctuated::<V, N>::parse(tokens, &self.lexer).unwrap();
-                    match tokens.next() {
-                        Some(next) => {
-                            if let lexer::TokenKind::Symbol(lexer::TokenSymbol::CloseParen) = self.lexer.get_kind(next) {
-                                return args;
-                            } else {
-                                panic!("Invalid syntax; expected `)` was {:?}", self.lexer.get_kind(next))
-                            }
-                        },
-                        None => panic!("Invalid syntax; expected `)` was {:?}", self.lexer.get_kind(next))
+                let start = self.lexer.get_loc(next);
+                if let lexer::TokenKind::Symbol(lexer::TokenSymbol::OpenBrace) = self.lexer.get_kind(next) {
+                    let mut closed = false;
+                    while let Some(next) = tokens.next() {
+                        if let lexer::TokenKind::Symbol(lexer::TokenSymbol::CloseBrace) = self.lexer.get_kind(next) {
+                            closed = true;
+                            break;
+                        } else if let lexer::TokenKind::Symbol(lexer::TokenSymbol::OpenBrace) = self.lexer.get_kind(next) {
+                            inner.push(Token::Block(self.block(tokens)));
+                        }
+                    }
+                    if !closed {
+                        abort!(
+                            ParseError,
+
+                            start,
+                            "`{` was never closed",
+                            help="Try adding `}`"
+                        )
                     }
                 } else {
-                    panic!("Invalid syntax; expected `(` was {:?}", self.lexer.get_kind(next))
+                    abort!(
+                        ParseError,
+
+                        start,
+                        "`{` was never closed",
+                        help="Try adding `}`"
+                    )
                 }
-            },
+            }
+            None => {
+                let location = self.lexer.curr_loc();
+                abort!(
+                    ParseError,
+
+                    location,
+                    "Expected `{`"
+                )
+            }
+        };
+        Block(inner)
+    }
+
+    pub fn group<'a, V: Parse + Debug, const N: char, T: Iterator<Item=&'a lexer::Token>>(&self, tokens: &mut Peekable<T>) -> token::Punctuated<V, N> {
+        match tokens.next() {
+            Some(open) => {
+                if let lexer::TokenKind::Symbol(lexer::TokenSymbol::OpenParen) = self.lexer.get_kind(open) {
+                    let args = token::Punctuated::<V, N>::parse(tokens, &self.lexer).unwrap();
+                    match tokens.next() {
+                        Some(close) => {
+                            if let lexer::TokenKind::Symbol(lexer::TokenSymbol::CloseParen) = self.lexer.get_kind(close) {
+                                args
+                            } else {
+                                panic!("Invalid syntax; expected `)` was {:?}", self.lexer.get_kind(close))
+                            }
+                        }
+                        None => panic!("Invalid syntax; expected `)` was {:?}", self.lexer.get_kind(open))
+                    }
+                } else {
+                    panic!("Invalid syntax; expected `(` was {:?}", self.lexer.get_kind(open))
+                }
+            }
             _ => panic!("Invalid syntax; expected `(`")
         }
     }
@@ -104,20 +161,27 @@ impl Parser {
 
         if let Some(ident) = ident {
             if let Some(scope) = self.scopes.last() {
-                if let Some(_) = scope.functions.get(ident) {
-                    println!("Call function {}()", ident);
-                    let args = self.group::<Parameter, ',', T>(tokens);
-                    self.tokens.push(Token::Call(token::Call::Call(
-                        token::Ident(ident.clone()),
-                        args
-                    )));
-                    return;
+                if let Some(index) = scope.functions.get(ident) {
+                    if let Token::Decleration(token::Declaration::Function(name, args, block)) = &self.tokens[*index] {
+                        let cargs = self.group::<Parameter, ',', T>(tokens);
+                        if args.len() != cargs.len() {
+                            abort!(ParseError,
+
+                                self.lexer.get_loc(token),
+                                format!("Expected {} arguments; found {}", args.len(), cargs.len())
+                            );
+                        }
+                        self.tokens.push(Token::Call(token::Call::Call(
+                            token::Ident(ident.clone()),
+                            cargs,
+                        )));
+                        return;
+                    }
                 } else if syscall::SYSCALLS.contains(&ident.as_str()) {
-                    println!("Syscall {}()", ident);
                     let args = self.group::<Parameter, ',', T>(tokens);
                     self.tokens.push(Token::Call(token::Call::Syscall(
                         token::Ident(ident.clone()),
-                        args
+                        args,
                     )));
                     return;
                 }
@@ -126,82 +190,127 @@ impl Parser {
         panic!("Function call not in scope")
     }
 
+    pub fn function_decl<'a, T: Iterator<Item=&'a lexer::Token>>(&mut self, token: &lexer::Token, tokens: &mut Peekable<T>) {
+        match tokens.next() {
+            Some(next) => {
+                if let lexer::TokenKind::Keyword(lexer::TokenKeyword::Fn) = self.lexer.get_kind(next) {
+                    let args = self.group::<Argument, ',', T>(tokens);
+                    let block = match tokens.peek() {
+                        Some(next) => {
+                            if let lexer::TokenKind::Symbol(lexer::TokenSymbol::Semicolon) = self.lexer.get_kind(next) {
+                                let _ = tokens.next();
+                                None
+                            } else if let lexer::TokenKind::Symbol(lexer::TokenSymbol::OpenBrace) = self.lexer.get_kind(next) {
+                                Some(self.block(tokens))
+                            } else {
+                                let location = self.lexer.get_loc(next);
+                                abort!(ParseError,  location, "Expected `;` or `{`")
+                            }
+                        }
+                        None => None
+                    };
+                    self.tokens.push(Token::Decleration(token::Declaration::Function(
+                        token::Ident(self.lexer.get_ident(token).unwrap().clone()),
+                        args,
+                        block,
+                    )))
+                } else {
+                    abort!(ParseError,  self.lexer.get_loc(token), "Expected `fn` keyword")
+                }
+            }
+            None => {
+                abort!(ParseError,  self.lexer.get_loc(token), "Expected function declaration", help="Try adding `fn`")
+            }
+        }
+    }
+
     pub fn ident_action<'a, T: Iterator<Item=&'a lexer::Token>>(
         &mut self,
         token: &lexer::Token,
         tokens: &mut Peekable<T>,
     ) {
-        // let name = self.lexer.get_ident(token).unwrap();
+        let name = self.lexer.get_ident(token).unwrap();
 
         match tokens.peek() {
             Some(next) => {
                 let info = &self.lexer.token_info[next.0];
 
-                let need_semi = match info.kind {
+                match &info.kind {
                     lexer::TokenKind::Symbol(symbol) => {
                         use lexer::TokenSymbol;
 
                         match symbol {
                             TokenSymbol::ColonColon => {
-                                // Function decleration
-                                println!("Declare function");
-                                true
+                                let _ = tokens.next();
+                                match tokens.peek() {
+                                    Some(next) => {
+                                        match self.lexer.get_kind(next) {
+                                            lexer::TokenKind::Keyword(lexer::TokenKeyword::Fn) => {
+                                                self.scopes.last_mut().unwrap().function(
+                                                    name.clone(),
+                                                    self.tokens.len(),
+                                                );
+                                                self.function_decl(token, tokens);
+                                            }
+                                            _ => {
+                                                println!("Const assignment");
+                                            }
+                                        }
+                                    }
+                                    None => {
+                                        abort!(ParseError,  self.lexer.get_loc(token), "Expected function declaration or const assignment");
+                                    }
+                                }
                             }
                             TokenSymbol::Colon => {
-                                // Variable decleration
+                                // Variable decl, expect type, `=`, then value
                                 println!("Declare variable");
-                                true
                             }
-                            TokenSymbol::Equal => {
+                            TokenSymbol::ColonEqual => {
                                 // Variable assignment
                                 println!("Assign to variable");
-                                true
                             }
                             TokenSymbol::Dot => {
                                 // Member access
                                 println!("Member access");
-                                false
                             }
                             TokenSymbol::OpenParen => {
-                                // Function call... parse arguments
-                                println!("Call function");
                                 self.function_call(token, tokens);
-                                false
+                                if self.scopes.len() == 1 {
+                                    match tokens.next() {
+                                        Some(next) => {
+                                            match self.lexer.get_kind(next) {
+                                                lexer::TokenKind::Symbol(lexer::TokenSymbol::Semicolon) => {}
+                                                _ => {
+                                                    abort!(ParseError,  self.lexer.get_loc(next), "Expected `;` after function call");
+                                                }
+                                            }
+                                        }
+                                        None => {
+                                            abort!(ParseError,  self.lexer.get_loc(token), "Expected `;` after function call");
+                                        }
+                                    }
+                                }
                             }
                             _ => {
+                                // No operation this value is either are a return value or does nothing.
+                                // If does nothing don't add to parse tree
                                 println!("No-Op");
-                                false
                             }
                         }
                     }
-                    _ => panic!("Expected ::, :, or = symbol following identifier"),
-                };
-
-                match tokens.peek() {
-                    Some(next) => {
-                        if lexer::TokenKind::Symbol(lexer::TokenSymbol::Semicolon) == self.lexer.get_kind(next) {
-                            // TODO: Return continue scope
-                            let _ = tokens.next();
-                        } else {
-                            // TODO: Return exit scope
-                            if need_semi {
-                                panic!("Expected semi-colon")
-                            }
-                        }
-                    }
-                    None => {
-                        /* TODO: Return exit scope */
-                        if need_semi {
-                            panic!("Expected semi-colon")
-                        }
+                    _ => {
+                        abort!(ParseError,  self.lexer.get_loc(next), "Expected ::, :, or = symbol following identifier")
                     }
                 };
             }
             None => {
-                panic!("Expected declaration or assignment");
+                abort!(ParseError,  self.lexer.curr_loc(), "Expected declaration or assignment");
             }
         }
     }
+
+    pub fn keyword_action<'a, T: Iterator<Item=&'a lexer::Token>>(&mut self, token: &lexer::Token, tokens: &mut Peekable<T>) {}
 
     pub fn parse(&mut self) {
         // First lex the source
@@ -214,19 +323,21 @@ impl Parser {
             let info = &self.lexer.token_info[token.0];
             match info.kind {
                 lexer::TokenKind::Identifier => {
-                    println!(
-                        "Identifier: {}",
-                        self.lexer.identifiers[info.payload as usize]
-                    );
-                    self.ident_action(&token, &mut tokens);
+                    self.ident_action(token, &mut tokens);
                 }
                 lexer::TokenKind::EOF => {
-                    println!("EOF");
                     break;
                 }
-                val => panic!("Unkown syntax {:?}", val),
+                lexer::TokenKind::Keyword(_) => {
+                    self.keyword_action(token, &mut tokens);
+                }
+                val => {
+                    abort!(ParseError,  self.lexer.curr_loc(), format!("Unknown syntax {:?}", val))
+                }
             }
         }
+
+        println!("{:?}", self.tokens);
     }
 }
 

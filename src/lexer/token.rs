@@ -1,17 +1,33 @@
+use std::fmt::Display;
+
+use crate::Span;
+
 macro_rules! kinds {
     ($name: ident, $($kind: ident : $spelling: literal),* $(,)*) => {
-        /// Construct a TokenKind sub enum.
-        ///
-        /// This will build the enum and set the doc of each entry to the mapped string.
-        /// This will also create a `make` method for the enum to get the entry for a given string.
-        /// The mapped string is used to match the enum. The result is a Option<$name> where $name
-        /// is the enums name. If the string is not an option, the None is returned.
-        #[derive(Debug, Eq, PartialEq, Copy, Clone)]
-        pub enum $name {
-            $(
-                #[doc=$spelling]
-                $kind,
-            )*
+        paste::paste!{
+            /// Construct a TokenKind sub enum.
+            ///
+            /// This will build the enum and set the doc of each entry to the mapped string.
+            /// This will also create a `make` method for the enum to get the entry for a given string.
+            /// The mapped string is used to match the enum. The result is a Option<$name> where $name
+            /// is the enums name. If the string is not an option, the None is returned.
+            #[derive(Debug, Eq, PartialEq, Copy, Clone)]
+            pub enum $name {
+                $(
+                    #[doc="`" $spelling "`"]
+                    $kind,
+                )*
+            }
+        }
+
+        impl Display for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "{}", match self {
+                    $(
+                        Self::$kind => $spelling,
+                    )*
+                })
+            }
         }
 
         impl $name {
@@ -50,6 +66,18 @@ macro_rules! kindn {
                 #[doc=$doc]
                 $kind,
             )*
+        }
+
+        impl Display for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "`{}`",
+                    match self {
+                        $(
+                            Self::$kind => $match,
+                        )*
+                    }
+                )
+            }
         }
 
         impl $name {
@@ -94,6 +122,7 @@ kinds! {
     CloseParen: ")",
     CloseSquare: "]",
     Colon: ":",
+    ColonEqual: ":=",
     ColonColon: "::",
     Comma: ",",
     Dot: ".",
@@ -179,6 +208,20 @@ and all but binary and hex support scientific notation. Number types are specifi
     Char: "A single character"
 }
 
+impl Display for TokenLiteral {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                TokenLiteral::Number => "Number",
+                TokenLiteral::String => "String",
+                TokenLiteral::Char => "Char",
+            }
+        )
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Token(pub usize);
 
@@ -190,17 +233,20 @@ pub struct TokenInfo {
     pub line: usize,
     /// The offset in the tokens line
     pub column: usize,
+    /// Span in the source code of all characters in the token
+    pub span: Span,
     /// Index into additional info list or length of error in source
     pub payload: usize,
 }
 
 impl TokenInfo {
-    pub fn new(kind: TokenKind, line: usize, column: usize, payload: usize) -> TokenInfo {
+    pub fn new(kind: TokenKind, line: usize, column: usize, span: Span, payload: usize) -> TokenInfo {
         TokenInfo {
             kind,
             line,
             column,
             payload,
+            span,
         }
     }
 }
@@ -224,6 +270,22 @@ pub enum TokenKind {
     EOF,
 }
 
+impl Display for TokenKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", match self {
+            TokenKind::Symbol(symbol) => symbol.to_string(),
+            TokenKind::Literal(literal) => literal.to_string(),
+            TokenKind::Keyword(keyword) => keyword.to_string(),
+            TokenKind::Identifier => "Identifier".to_string(),
+            TokenKind::IntegerTypeLiteral => "IntegerType".to_string(),
+            TokenKind::UnsignedTypeLiteral => "UnsignedType".to_string(),
+            TokenKind::FloatTypeLiteral => "FloatType".to_string(),
+            TokenKind::Error => "Error".to_string(),
+            TokenKind::EOF => "EOF".to_string(),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -233,6 +295,7 @@ mod tests {
         let keyword = "while";
         assert_eq!(TokenKeyword::make(keyword), Some(TokenKeyword::While));
     }
+
     #[test]
     fn make_keyword_fail() {
         let keyword = "not-valid-keyword";
@@ -244,6 +307,7 @@ mod tests {
         let symbol = "<<=";
         assert_eq!(TokenSymbol::make(symbol), Some(TokenSymbol::LessLessEqual));
     }
+
     #[test]
     fn make_symbol_fail() {
         let symbol = "n";
@@ -251,18 +315,8 @@ mod tests {
     }
 }
 
-#[derive(Debug)]
-pub struct ErrorInfo {
-    pub size: usize,
-    pub message: String,
-}
-impl ErrorInfo {
-    pub fn new(size: usize, message: String) -> ErrorInfo {
-        ErrorInfo { size, message }
-    }
-}
-
 pub struct NumberLiteral;
+
 impl NumberLiteral {
     pub fn verify(value: &String) -> bool {
         let mut chars = value.chars();

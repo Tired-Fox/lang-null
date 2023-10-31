@@ -8,9 +8,10 @@
 // any
 // undefined
 
+x: int : 0;
 const x: int = 0;
 x: i32 = 0;
-x: i32 = 0;
+let x: i32 = 0;
 
 /*
     Multiline comment `/* markdown code escapes closing symbols */`
@@ -41,7 +42,7 @@ pub enum Error {
     OptionError(String)
 }
 
-union_enum :: () Error!?String {
+union_enum :: fn() Error!?String {
     // Can re-assign value
     let x: i32 = 0;
     
@@ -51,27 +52,27 @@ union_enum :: () Error!?String {
 }
 
 pub template SayHello {
-    say_hello::(&self)
+    say_hello::fn(self: &Self)
 }
 
 struct Data {
     name: String
 
-    _::(self) {
+    _::fn(self) {
         /* Deconstructor: Called on dropping self */
     }
 
-    name::(&self) &String {
+    name::fn(&self) &String {
         &self.name
     }
 
-    hello::() {
+    hello::fn() {
         print("Hello")
     }
 }
 
 extend Data with SayHello {
-    say_hello::(&self) {
+    say_hello::fn(&self) {
         let suffix = '!';
         print("Hello, {}{}", self.name, suffix)
     }
@@ -82,6 +83,10 @@ math :: fn(name: String, ..args: []String) {
 
   if true and false or not false {
   }
+}
+
+optional :: (code?: i32) bool {
+    false
 }
 
 main :: fn() {

@@ -1,89 +1,120 @@
 use std::fmt::{Debug, Display};
 use std::iter::Peekable;
 use std::ops::Index;
+use crate::error::Error;
 
-use crate::lexer;
+use crate::{err, lexer};
+use crate::lexer::Lexer;
 
 pub trait Parse:
-where Self: Sized
+    where Self: Sized
 {
-    fn parse<'a, T: Iterator<Item = &'a lexer::Token>>(stream: &mut Peekable<T>, lexer: &lexer::Lexer) -> ParseResult<Self>;
+    fn parse<'a, T: Iterator<Item=&'a lexer::Token>>(stream: &mut Peekable<T>, lexer: &lexer::Lexer) -> ParseResult<Self>;
 }
 
 pub type ParseResult<T> = Result<T, Error>;
 
 pub struct Location {
     pub line: usize,
-    pub column: usize
-}
-pub struct Error(Location, String);
-impl Error {
-    pub fn new(loc: (usize, usize), message: String) -> Error {
-        Error(Location { line: loc.0, column: loc.1}, message)
-    }
+    pub column: usize,
 }
 
-impl Debug for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "[{}:{}]: {}",
-            self.0.line,
-            self.0.column,
-            self.1
-        )
-    }
-}
-impl Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            self.1,
-        )
-    }
-}
-impl std::error::Error for Error {}
-
-#[derive(Debug)]
 pub enum Token {
     Call(Call),
     Ident(Ident),
     Literal(Literal),
     Decleration(Declaration),
+    Block(Block),
+}
+
+impl Debug for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Token::Call(call) => write!(f, "{:?}", call),
+            Token::Ident(ident) => write!(f, "{:?}", ident),
+            Token::Literal(literal) => write!(f, "{:?}", literal),
+            Token::Decleration(declaration) => write!(f, "{:?}", declaration),
+            Token::Block(block) => write!(f, "{:?}", block),
+        }
+    }
 }
 
 /// <name>: <type>
 #[derive(Debug)]
 pub struct Argument {
     pub name: Path,
-    pub arg_type: Path,
+    pub arg_type: Type,
+}
+
+#[derive(Debug)]
+pub enum Type {
+    IntegerType(u8),
+    FloatType(u8),
+    UnsignedType(u8),
+    Path(Path),
+}
+
+impl Parse for Type {
+    fn parse<'a, T: Iterator<Item=&'a lexer::Token>>(stream: &mut Peekable<T>, lexer: &Lexer) -> ParseResult<Self> {
+        let next = stream.peek().map(|v| **v);
+        match next {
+            Some(next) => {
+                match lexer.get_kind(&next) {
+                    lexer::TokenKind::Identifier => {
+                        stream.next();
+                        Ok(Type::Path(Path::parse(stream, lexer)?))
+                    }
+                    lexer::TokenKind::IntegerTypeLiteral => {
+                        stream.next();
+                        Ok(Type::IntegerType(lexer.get_number(&next).unwrap().parse().unwrap()))
+                    }
+                    lexer::TokenKind::UnsignedTypeLiteral => {
+                        stream.next();
+                        Ok(Type::UnsignedType(lexer.get_number(&next).unwrap().parse().unwrap()))
+                    }
+                    lexer::TokenKind::FloatTypeLiteral => {
+                        stream.next();
+                        Ok(Type::FloatType(lexer.get_number(&next).unwrap().parse().unwrap()))
+                    }
+                    _ => {
+                        Err(err!(ParseError, lexer.get_loc(&next), "Expected a type"))
+                    }
+                }
+            }
+            None => Err(err!(ParseError, "Expected a type".to_string()))
+        }
+    }
 }
 
 #[derive(Debug)]
 pub struct Segment(pub Ident);
+
 impl Parse for Segment {
-    fn parse<'a, T: Iterator<Item = &'a lexer::Token>>(stream: &mut Peekable<T>, lexer: &lexer::Lexer) -> ParseResult<Self> {
-        if let Some(next) = stream.next() {
+    fn parse<'a, T: Iterator<Item=&'a lexer::Token>>(stream: &mut Peekable<T>, lexer: &lexer::Lexer) -> ParseResult<Self> {
+        if let Some(next) = stream.peek() {
             if let lexer::TokenKind::Identifier = lexer.get_kind(next) {
                 if let Some(ident) = lexer.get_ident(next) {
+                    stream.next();
                     return Ok(Segment(Ident(ident.clone())));
                 }
             }
-            Err(Error::new(lexer.get_loc(next), "Expected an identifier".to_string()))
+            eprintln!("Expected an identifier; was {:?}", lexer.get_kind(next));
+            Err(err!(ParseError, lexer.get_loc(next), "Expected an identifier".to_string()))
         } else {
-            Err(Error::new((0, 0), "Expected an identifier".to_string()))
+            eprintln!("Expected an identifier; no tokens left");
+            Err(err!(ParseError, "Expected an identifier".to_string()))
         }
     }
 }
 
 #[derive(Debug)]
 pub struct Path(pub Vec<Segment>);
+
 impl Parse for Path {
-    fn parse<'a, T: Iterator<Item = &'a lexer::Token>>(stream: &mut Peekable<T>, lexer: &lexer::Lexer) -> ParseResult<Self> {
+    fn parse<'a, T: Iterator<Item=&'a lexer::Token>>(stream: &mut Peekable<T>, lexer: &lexer::Lexer) -> ParseResult<Self> {
         let start = match stream.peek() {
             Some(next) => lexer.get_loc(next),
-            None => return Err(Error::new((0, 0), "Expected path".to_string())),
+            None => return Err(err!(ParseError, "Expected path".to_string())),
         };
 
         let mut segments = Vec::new();
@@ -94,13 +125,13 @@ impl Parse for Path {
                     stream.next();
                     continue;
                 } else {
-                    return Err(Error::new(lexer.get_loc(next), "Invalid path syntax; expected `::`".to_string()));
+                    break;
                 }
             }
         }
 
         if segments.is_empty() {
-            Err(Error::new(start, "Expected path".to_string()))
+            Err(err!(ParseError, start.clone(), "Expected path".to_string()))
         } else {
             Ok(Path(segments))
         }
@@ -108,18 +139,27 @@ impl Parse for Path {
 }
 
 impl Parse for Argument {
-    fn parse<'a, T: Iterator<Item = &'a lexer::Token>>(stream: &mut Peekable<T>, lexer: &lexer::Lexer) -> ParseResult<Self> {
-        // Path: Path
+    fn parse<'a, T: Iterator<Item=&'a lexer::Token>>(stream: &mut Peekable<T>, lexer: &lexer::Lexer) -> ParseResult<Self> {
         let name = Path::parse(stream, lexer)?;
         let arg_type = match stream.next() {
             Some(next) => {
                 if let lexer::TokenKind::Symbol(lexer::TokenSymbol::Colon) = lexer.get_kind(next) {
-                    Path::parse(stream, lexer)?
+                    match Type::parse(stream, lexer) {
+                        Ok(val) => val,
+                        Err(err) => {
+                            eprintln!("{}", err);
+                            return Err(err);
+                        }
+                    }
                 } else {
-                    return Err(Error::new(lexer.get_loc(next), "Invalid argument syntax; expected `:`".to_string()))
+                    eprintln!("Invalid argument syntax; expected `:`");
+                    return Err(err!(ParseError, lexer.get_loc(next), "Invalid argument syntax; expected `:`".to_string()));
                 }
-            },
-            None => return Err(Error::new((0, 0), "Invalid argument syntax; expected argument type".to_string()))
+            }
+            None => {
+                eprintln!("Invalid argument syntax; expected argument type");
+                return Err(err!(ParseError, "Invalid argument syntax; expected argument type".to_string()));
+            }
         };
         Ok(Argument { name, arg_type })
     }
@@ -130,8 +170,9 @@ pub struct Block(pub Vec<Token>);
 
 #[derive(Debug)]
 pub struct Punctuated<T: Parse, const N: char = ','>(pub Vec<T>);
+
 impl<V: Parse, const N: char> Parse for Punctuated<V, N> {
-    fn parse<'a, T: Iterator<Item = &'a lexer::Token>>(stream: &mut Peekable<T>, lexer: &lexer::Lexer) -> ParseResult<Self> {
+    fn parse<'a, T: Iterator<Item=&'a lexer::Token>>(stream: &mut Peekable<T>, lexer: &lexer::Lexer) -> ParseResult<Self> {
         let mut values = Vec::new();
         while let Ok(value) = V::parse(stream, lexer) {
             values.push(value);
@@ -140,11 +181,11 @@ impl<V: Parse, const N: char> Parse for Punctuated<V, N> {
                     if let lexer::TokenKind::Symbol(symbol) = lexer.get_kind(next) {
                         if symbol.compare(N.to_string().as_str()) {
                             stream.next();
-                            continue
+                            continue;
                         }
                     }
-                    break
-                },
+                    break;
+                }
                 None => break
             }
         }
@@ -165,7 +206,7 @@ impl<T: Parse, const N: char> Index<usize> for Punctuated<T, N> {
     }
 }
 
-impl<T: Parse, const N: char> Default for  Punctuated<T, N>  {
+impl<T: Parse, const N: char> Default for Punctuated<T, N> {
     fn default() -> Self {
         Self(Vec::new())
     }
@@ -173,10 +214,11 @@ impl<T: Parse, const N: char> Default for  Punctuated<T, N>  {
 
 #[derive(Debug)]
 pub struct Ident(pub String);
-impl ToString for  Ident {
-   fn to_string(&self) -> String {
-       self.0.clone()
-   }
+
+impl ToString for Ident {
+    fn to_string(&self) -> String {
+        self.0.clone()
+    }
 }
 
 #[derive(Debug)]
@@ -194,37 +236,40 @@ pub enum Parameter {
 }
 
 impl Parse for Parameter {
-    fn parse<'a, T: Iterator<Item = &'a lexer::Token>>(stream: &mut Peekable<T>, lexer: &lexer::Lexer) -> ParseResult<Self> {
-        match stream.next() {
+    fn parse<'a, T: Iterator<Item=&'a lexer::Token>>(stream: &mut Peekable<T>, lexer: &lexer::Lexer) -> ParseResult<Self> {
+        let start = stream.peek().map(|v| (**v));
+        match start {
             Some(next) => {
-                match lexer.get_kind(next) {
+                match lexer.get_kind(&next) {
                     lexer::TokenKind::Identifier => {
-                        Ok(Parameter::Ident(Ident(lexer.get_ident(next).unwrap().clone())))
-                    },
+                        let _ = stream.next();
+                        Ok(Parameter::Ident(Ident(lexer.get_ident(&next).unwrap().clone())))
+                    }
                     lexer::TokenKind::Literal(lit) => {
+                        let _ = stream.next();
                         Ok(match lit {
                             lexer::TokenLiteral::Number => {
-                                Parameter::Literal(Literal::Number(lexer.get_number(next).unwrap().clone()))
-                            },
+                                Parameter::Literal(Literal::Number(lexer.get_number(&next).unwrap().clone()))
+                            }
                             lexer::TokenLiteral::String => {
-                                Parameter::Literal(Literal::String(lexer.get_string(next).unwrap().clone()))
-                            },
+                                Parameter::Literal(Literal::String(lexer.get_string(&next).unwrap().clone()))
+                            }
                             lexer::TokenLiteral::Char => {
-                                Parameter::Literal(Literal::Char(lexer.get_char(next).unwrap().clone()))
+                                Parameter::Literal(Literal::Char(lexer.get_char(&next).unwrap()))
                             }
                         })
-                    },
-                    _ => Err(Error::new(lexer.get_loc(next), "Invalid parameter syntax".to_string()))
+                    }
+                    _ => Err(err!(ParseError, lexer.get_loc(&next), "Invalid parameter syntax".to_string()))
                 }
-            },
-            None => Err(Error::new((0, 0), "Expected parameter".to_string()))
+            }
+            None => Err(err!(ParseError, "Expected parameter".to_string()))
         }
     }
 }
 
 #[derive(Debug)]
 pub enum Declaration {
-    Function(Ident, Punctuated<Argument>, Block),
+    Function(Ident, Punctuated<Argument>, Option<Block>),
     Variable(Ident, Literal),
 }
 
