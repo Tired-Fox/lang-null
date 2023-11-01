@@ -2,8 +2,9 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::iter::Peekable;
 
-use crate::{abort, lexer};
+use crate::{abort, err, first_positive, lexer, Location, Span};
 use crate::compiler::syscall;
+use crate::error::{Error, Errors};
 use crate::lexer::Lexer;
 use crate::parser::token::{Argument, Block, Parameter, Parse, Token};
 
@@ -58,6 +59,7 @@ impl Scope {
 
 pub struct Parser {
     lexer: Lexer,
+    pub errors: Vec<Error>,
     pub tokens: Vec<Token>,
     pub scopes: Vec<Scope>,
 }
@@ -67,11 +69,19 @@ impl Parser {
         self.scopes.first().unwrap()
     }
 
-    pub fn path<P: AsRef<std::path::Path>>(path: P) -> Self {
+    pub fn source(&self) -> &[char] {
+        self.lexer.source()
+    }
+
+    pub fn file(&self) -> &Option<String> {
+        &self.lexer.file
+    }
+
+    pub fn with_path<P: AsRef<std::path::Path>>(path: P) -> Self {
         Parser::new(Lexer::with_path(path))
     }
 
-    pub fn source(source: &str) -> Self {
+    pub fn with_source(source: &str) -> Self {
         Parser::new(Lexer::with_source(source))
     }
 
@@ -79,6 +89,7 @@ impl Parser {
         Parser {
             lexer,
             tokens: Vec::new(),
+            errors: Vec::new(),
             scopes: vec![
                 // Global Scope
                 Scope::new()
@@ -86,29 +97,42 @@ impl Parser {
         }
     }
 
-    pub fn block<'a, T: Iterator<Item=&'a lexer::Token>>(&self, tokens: &mut Peekable<T>) -> Block {
+    fn abort(&mut self, error: Error) {
+        self.errors.push(error);
+        Errors(&self.errors).render(self.lexer.source());
+        std::process::exit(1);
+    }
+
+    fn scope<'a, T: Iterator<Item=&'a lexer::Token>>(&mut self, tokens: &mut Peekable<T>) -> (Vec<Token>, usize) {
+        // Parse all types like in the `parse()` method but exit on `}`
+        let mut closed = false;
+        let mut end = 0;
+        let mut result = Vec::new();
+        while let Some(token) = tokens.next().map(|t| (*t).clone()) {
+            if let lexer::TokenKind::Symbol(lexer::TokenSymbol::CloseBrace) = self.lexer.get_kind(&token) {
+                closed = true;
+                break;
+            } else if let lexer::TokenKind::Symbol(lexer::TokenSymbol::OpenBrace) = self.lexer.get_kind(&token) {
+                result.push(self.block(tokens));
+                end = self.lexer.get_loc(&token).span.end();
+            }
+        }
+        if !closed {
+            self.abort(err!("Unclosed block", help=["Try adding `}`"]));
+        }
+        (Vec::new(), end)
+    }
+
+    fn block<'a, T: Iterator<Item=&'a lexer::Token>>(&mut self, tokens: &mut Peekable<T>) -> Block {
         let mut inner = Vec::new();
+        let mut end = 0;
         match tokens.next() {
             Some(next) => {
                 let start = self.lexer.get_loc(next);
                 if let lexer::TokenKind::Symbol(lexer::TokenSymbol::OpenBrace) = self.lexer.get_kind(next) {
-                    let mut closed = false;
-                    while let Some(next) = tokens.next() {
-                        if let lexer::TokenKind::Symbol(lexer::TokenSymbol::CloseBrace) = self.lexer.get_kind(next) {
-                            closed = true;
-                            break;
-                        } else if let lexer::TokenKind::Symbol(lexer::TokenSymbol::OpenBrace) = self.lexer.get_kind(next) {
-                            inner.push(Token::Block(self.block(tokens)));
-                        }
-                    }
-                    if !closed {
-                        abort!(
-                            path=self.lexer.file.clone(),
-                            span=start,
-                            "`{` was never closed",
-                            help=["Try adding `}`"]
-                        )
-                    }
+                    let (result, last)= self.scope(tokens);
+                    end = last;
+                    inner = result;
                 } else {
                     abort!(
                         path=self.lexer.file.clone(),
@@ -127,10 +151,11 @@ impl Parser {
                 )
             }
         };
-        Block(inner)
+        // TODO: Change location to be based on the inner tokens
+        Block(inner, Location::new(0, 0, Span::new(0, end)))
     }
 
-    pub fn group<'a, V: Parse + Debug, const N: char, T: Iterator<Item=&'a lexer::Token>>(&self, tokens: &mut Peekable<T>) -> token::Punctuated<V, N> {
+    fn group<'a, V: Parse + Debug, const N: char, T: Iterator<Item=&'a lexer::Token>>(&self, tokens: &mut Peekable<T>) -> (token::Punctuated<V, N>, usize) {
         match tokens.next() {
             Some(open) => {
                 if let lexer::TokenKind::Symbol(lexer::TokenSymbol::OpenParen) = self.lexer.get_kind(open) {
@@ -138,7 +163,7 @@ impl Parser {
                     match tokens.next() {
                         Some(close) => {
                             if let lexer::TokenKind::Symbol(lexer::TokenSymbol::CloseParen) = self.lexer.get_kind(close) {
-                                args
+                                (args, self.lexer.get_loc(close).span.end())
                             } else {
                                 panic!("Invalid syntax; expected `)` was {:?}", self.lexer.get_kind(close))
                             }
@@ -153,14 +178,14 @@ impl Parser {
         }
     }
 
-    pub fn function_call<'a, T: Iterator<Item=&'a lexer::Token>>(&mut self, token: &lexer::Token, tokens: &mut Peekable<T>) {
+    fn function_call<'a, T: Iterator<Item=&'a lexer::Token>>(&mut self, token: &lexer::Token, tokens: &mut Peekable<T>) {
         let ident = self.lexer.get_ident(token);
 
         if let Some(ident) = ident {
             if let Some(scope) = self.scopes.last() {
-                if let Some(index) = scope.functions.get(ident) {
-                    if let Token::Decleration(token::Declaration::Function(_name, args, _block)) = &self.tokens[*index] {
-                        let cargs = self.group::<Parameter, ',', T>(tokens);
+                if let Some(index) = scope.functions.get(&ident) {
+                    if let Token::Decleration(token::Declaration::Function{args, ..}) = &self.tokens[*index] {
+                        let (cargs, last) = self.group::<Parameter, ',', T>(tokens);
                         if args.len() != cargs.len() {
                             abort!(
                                 path=self.lexer.file.clone(),
@@ -168,18 +193,32 @@ impl Parser {
                                 format!("Expected {} arguments; found {}", args.len(), cargs.len())
                             );
                         }
-                        self.tokens.push(Token::Call(token::Call::Call(
-                            token::Ident(ident.clone()),
-                            cargs,
-                        )));
+                        let name = self.lexer.get_loc(token);
+                        let location = Location::new(
+                            name.line,
+                            name.column,
+                            Span::new(name.span.start(), last)
+                        );
+                        self.tokens.push(Token::Call(token::Call::Call{
+                            name: token::Ident(ident.clone(), name),
+                            params: cargs,
+                            location,
+                        }));
                         return;
                     }
                 } else if syscall::SYSCALLS.contains(&ident.as_str()) {
-                    let args = self.group::<Parameter, ',', T>(tokens);
-                    self.tokens.push(Token::Call(token::Call::Syscall(
-                        token::Ident(ident.clone()),
-                        args,
-                    )));
+                    let (cargs, last) = self.group::<Parameter, ',', T>(tokens);
+                    let name = self.lexer.get_loc(token);
+                    let location = Location::new(
+                        name.line,
+                        name.column,
+                        Span::new(name.span.start(), last)
+                    );
+                    self.tokens.push(Token::Call(token::Call::Syscall{
+                        name: token::Ident(ident.clone(), name),
+                        params: cargs,
+                        location,
+                    }));
                     return;
                 }
             }
@@ -187,11 +226,11 @@ impl Parser {
         panic!("Function call not in scope")
     }
 
-    pub fn function_decl<'a, T: Iterator<Item=&'a lexer::Token>>(&mut self, token: &lexer::Token, tokens: &mut Peekable<T>) {
+    fn function_decl<'a, T: Iterator<Item=&'a lexer::Token>>(&mut self, token: &lexer::Token, tokens: &mut Peekable<T>) {
         match tokens.next() {
             Some(next) => {
                 if let lexer::TokenKind::Keyword(lexer::TokenKeyword::Fn) = self.lexer.get_kind(next) {
-                    let args = self.group::<Argument, ',', T>(tokens);
+                    let (args, last) = self.group::<Argument, ',', T>(tokens);
                     let block = match tokens.peek() {
                         Some(next) => {
                             if let lexer::TokenKind::Symbol(lexer::TokenSymbol::Semicolon) = self.lexer.get_kind(next) {
@@ -206,11 +245,21 @@ impl Parser {
                         }
                         None => None
                     };
-                    self.tokens.push(Token::Decleration(token::Declaration::Function(
-                        token::Ident(self.lexer.get_ident(token).unwrap().clone()),
-                        args,
-                        block,
-                    )))
+                    let name_loc = self.lexer.get_loc(token);
+                    let location = Location::new(
+                        name_loc.line,
+                        name_loc.column,
+                        Span::new(name_loc.span.start(), first_positive(&[
+                            name_loc.span.end(),
+                            last
+                        ]))
+                    );
+                    self.tokens.push(Token::Decleration(token::Declaration::Function {
+                        name: token::Ident( self.lexer.get_ident(token).unwrap().clone(), name_loc),
+                        args: args,
+                        body: block,
+                        location
+                    }))
                 } else {
                     abort!(path=self.lexer.file.clone(), span=self.lexer.get_loc(token), "Expected `fn` keyword")
                 }
@@ -221,7 +270,7 @@ impl Parser {
         }
     }
 
-    pub fn ident_action<'a, T: Iterator<Item=&'a lexer::Token>>(
+    fn ident_action<'a, T: Iterator<Item=&'a lexer::Token>>(
         &mut self,
         token: &lexer::Token,
         tokens: &mut Peekable<T>,
@@ -307,7 +356,7 @@ impl Parser {
         }
     }
 
-    pub fn keyword_action<'a, T: Iterator<Item=&'a lexer::Token>>(&mut self, _token: &lexer::Token, _tokens: &mut Peekable<T>) {}
+    fn keyword_action<'a, T: Iterator<Item=&'a lexer::Token>>(&mut self, _token: &lexer::Token, _tokens: &mut Peekable<T>) {}
 
     pub fn parse(&mut self) {
         // First lex the source

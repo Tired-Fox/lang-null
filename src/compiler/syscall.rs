@@ -2,6 +2,7 @@ use std::fmt::Display;
 
 use super::external::*;
 use nasm_to_string::nasm;
+use super::assembly::platform;
 
 pub type SyscallRet = (String, Option<Vec<Extern>>);
 
@@ -33,17 +34,6 @@ macro_rules! syscalls {
 syscalls! {
     exit: ["60", "0x02000001", "ExitProcess"],
     print: ["1", "0x02000004", "printf"]
-}
-
-macro_rules! platform {
-    ($name: literal, $asm: expr, [$($externs: ident),* $(,)?]) => {
-        #[cfg(target_os=$name)]
-        return ($asm, Some(vec![$($externs,)*]))
-    };
-    ($name: literal, $asm: expr $(,)?) => {
-        #[cfg(target_os=$name)]
-        return ($asm, None)
-    };
 }
 
 pub fn exit(exit_code: i32) -> SyscallRet {

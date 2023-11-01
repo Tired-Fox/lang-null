@@ -1,6 +1,7 @@
 extern crate null;
 
-use null::compiler::Compiler;
+use nasm_to_string::nasm;
+use null::compiler::{Compiler, syscall};
 use null::error::Errors;
 
 use null::lexer::Lexer;
@@ -17,13 +18,12 @@ fn compile() {
 const SOURCE: &'static str = r#"
 main :: fn(exit_code: i32) {
 }
-main(12)
+main(12);
 exit(12);
-f256
 "#;
 
 fn parse() {
-    let mut parser = Parser::source(SOURCE);
+    let mut parser = Parser::with_source(SOURCE);
     parser.parse();
 }
 
@@ -36,7 +36,7 @@ fn lex() {
 }
 
 fn main() {
-    lex();
+    // lex();
     // parse();
-    // compile();
+    compile();
 }

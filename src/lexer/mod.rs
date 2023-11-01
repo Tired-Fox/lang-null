@@ -4,7 +4,7 @@ use std::fs;
 pub use token::{Token, TokenInfo, TokenKind};
 
 pub use self::token::{NumberLiteral, TokenKeyword, TokenLiteral, TokenSymbol};
-use crate::error::{abort, Error};
+use crate::error::{abort, Error, ErrorCommand};
 use crate::{err, Location, Span};
 
 pub mod token;
@@ -38,7 +38,7 @@ pub struct Lexer {
     pub literal_strings: Vec<String>,
     pub literal_chars: Vec<char>,
 
-    pub errors: Vec<(String, Option<Vec<String>>)>,
+    pub errors: Vec<Error>,
 
     ident_map: HashMap<String, usize>,
     pub identifiers: Vec<String>,
@@ -74,24 +74,9 @@ impl Lexer {
         &self.token_info[token.0]
     }
 
-    pub fn get_error(&self, token: &Token) -> Error {
-        let info = self.get_info(token);
-        if self.get_kind(token) == TokenKind::Error {
-            let error = self.errors[info.payload].clone();
-            if error.1.is_some() {
-                let help = error.1.unwrap();
-                err!(path=self.file.clone(), span=self.get_loc(token), error.0, help=help)
-            } else {
-                err!(path=self.file.clone(), span=self.get_loc(token), error.0)
-            }
-        } else {
-            panic!("{:?} is not an error", info);
-        }
-    }
-
-    pub fn get_ident(&self, token: &Token) -> Option<&String> {
+    pub fn get_ident(&self, token: &Token) -> Option<String> {
         if self.get_kind(token) == TokenKind::Identifier {
-            Some(&self.identifiers[self.get_info(token).payload])
+            Some(self.identifiers[self.get_info(token).payload].clone())
         } else {
             None
         }
@@ -140,8 +125,7 @@ impl Lexer {
     }
 
     pub fn extract(&self, span: &Span) -> &[char] {
-        if span.start() > span.end() { panic!("Start must be less than the end value; was {}", span.start()) }
-        else if span.end() > self.buffer.len() { panic!("End must be less than the source length; was {}", span.end()) } else {
+        if span.start() > span.end() { panic!("Start must be less than the end value; was {}", span.start()) } else if span.end() > self.buffer.len() { panic!("End must be less than the source length; was {}", span.end()) } else {
             &self.buffer[span.start()..span.end()]
         }
     }
@@ -150,12 +134,8 @@ impl Lexer {
         self.buffer.as_slice()
     }
 
-    pub fn errors(&self) -> Vec<Error> {
-        self.tokens
-            .iter()
-            .filter(|t| TokenKind::Error == self.get_kind(t))
-            .map(|t| self.get_error(t))
-            .collect()
+    pub fn errors(&self) -> &Vec<Error> {
+        &self.errors
     }
 }
 
@@ -297,20 +277,17 @@ impl Lexer {
             || (!value.chars().next().unwrap().is_alphabetic()
             && !value.starts_with('_'))
         {
-            self.tokens.push(Token(self.token_info.len()));
-            self.token_info.push(TokenInfo::new(
-                TokenKind::Error,
-                self.lines.len(),
-                self.get_column(start),
-                Span::new(first + start, first + start + value.len()),
-                self.errors.len(),
-            ));
-            self.errors.push((
+            self.errors.push(err!(
+                path=self.file,
+                span=Location::new(
+                    self.lines.len(),
+                    self.get_column(start),
+                    Span::new(first + start, first + start + value.len())
+                ),
                 format!(
                     "Expected alpha char or underscore: found {:?}",
                     value.chars().next().unwrap()
-                ),
-                None
+                )
             ));
             return;
         }
@@ -325,7 +302,7 @@ impl Lexer {
             };
 
             if let Some(k) = kind {
-                match u8::from_str_radix(&value[1..], 10) {
+                match u32::from_str_radix(&value[1..], 10) {
                     Ok(val) if [8, 16, 32, 64, 128].contains(&val) => {
                         self.tokens.push(Token(self.token_info.len()));
                         self.token_info.push(TokenInfo::new(
@@ -336,21 +313,46 @@ impl Lexer {
                             self.literal_numbers.len(),
                         ));
                         self.literal_numbers.push((value[1..]).to_string());
-                    },
-                    _ => {
-                        self.tokens.push(Token(self.token_info.len()));
-                        self.token_info.push(TokenInfo::new(
-                            TokenKind::Error,
-                            self.lines.len(),
-                            self.get_column(start),
-                            Span::new(first + start, first + start + value.len()),
-                            self.errors.len(),
-                        ));
+                    }
+                    Ok(val) => {
                         let t = value.chars().next().unwrap();
-                        self.errors.push((
+                        self.errors.push(err!(
+                            path=self.file,
+                            span=Location::new(
+                                self.lines.len(),
+                                self.get_column(start),
+                                Span::new(first + start, first + start + value.len())
+                            ),
+                            visual=ErrorCommand::Replace(
+                                if val > 128 || 128 - val < 64 {
+                                    format!("{}{}", t, 128)
+                                } else if val > 64 || 64 - val < 32 {
+                                    format!("{}{}", t, 64)
+                                } else if val > 32 || 32 - val < 16 {
+                                    format!("{}{}", t, 32)
+                                } else if val > 16 || 16 - val < 8 {
+                                    format!("{}{}", t, 16)
+                                } else {
+                                    format!("{}{}", t, 8)
+                                }
+                            ),
                             format!("Unknown type `{}{}`", t, &value[1..]),
-                            Some(vec![format!("Try using {t}8, {t}16, {t}32, {t}64, or {t}128 instead", t=t)]),
-                        ))
+                            help=[format!("Try using {t}8, {t}16, {t}32, {t}64, or {t}128 instead", t=t)]
+                        ));
+                    },
+                    Err(e) => {
+                        let t = value.chars().next().unwrap();
+                        self.errors.push(err!(
+                            path=self.file,
+                            span=Location::new(
+                                self.lines.len(),
+                                self.get_column(start),
+                                Span::new(first + start, first + start + value.len())
+                            ),
+                            visual=ErrorCommand::Replace(format!("{}32", t)),
+                            format!("Unknown type `{}{}`", t, &value[1..]),
+                            help=[format!("Try using {t}8, {t}16, {t}32, {t}64, or {t}128 instead", t=t)]
+                        ));
                     }
                 }
             }
@@ -425,15 +427,15 @@ impl Lexer {
                 ))
             }
             None => {
-                self.tokens.push(Token(self.token_info.len()));
-                self.token_info.push(TokenInfo::new(
-                    TokenKind::Error,
-                    self.lines.len(),
-                    self.get_column(start),
-                    Span::new(first + start, first + start + value.len()),
-                    self.errors.len(),
+                self.errors.push(err!(
+                    path=self.file,
+                    span=Location::new(
+                        self.lines.len(),
+                        self.get_column(start),
+                        Span::new(first + start, first + start + value.len())
+                    ),
+                    format!("Unknown symbol {:?}", value)
                 ));
-                self.errors.push((format!("Unkown symbol {:?}", value), None));
             }
         }
     }
@@ -471,7 +473,16 @@ impl Lexer {
                 Span::new(first + start, first + start + value.len()),
                 self.errors.len(),
             ));
-            self.errors.push(("Invalid number format".to_string(), None))
+            self.errors.push(err!(
+                    path=self.file,
+                    span=Location::new(
+                        self.lines.len(),
+                        self.get_column(start),
+                        Span::new(first + start, first + start + value.len())
+                    ),
+                    "Invalid number format"
+                )
+            )
         }
     }
 
@@ -530,15 +541,16 @@ impl Lexer {
                 }
                 None => {
                     let first = self.lines.last().unwrap().start;
-                    self.tokens.push(Token(self.token_info.len()));
-                    self.token_info.push(TokenInfo::new(
-                        TokenKind::Error,
-                        self.lines.len(),
-                        self.get_column(start),
-                        Span::new(first + start, first + start + value.len()),
-                        self.errors.len(),
-                    ));
-                    self.errors.push(("Unterminated character literal".to_string(), Some(vec!["Try adding `'`".to_string()])))
+                    self.errors.push(err!(
+                        path=self.file,
+                        span=Location::new(
+                            self.lines.len(),
+                            self.get_column(start),
+                            Span::new(first + start, first + start + value.len())
+                        ),
+                        "Unterminated character literal",
+                        help=["Try adding `'`"]
+                    ))
                 }
                 _ => {
                     value.push(self.next());
@@ -548,15 +560,15 @@ impl Lexer {
 
         let first = self.lines.last().unwrap().start;
         if value.len() != 1 {
-            self.tokens.push(Token(self.token_info.len()));
-            self.token_info.push(TokenInfo::new(
-                TokenKind::Error,
-                self.lines.len(),
-                self.get_column(start),
-                Span::new(first + start, first + start + value.len()),
-                self.errors.len(),
+            self.errors.push(err!(
+                path=self.file,
+                span=Location::new(
+                    self.lines.len(),
+                    self.get_column(start),
+                    Span::new(first + start, first + start + value.len())
+                ),
+                "Length of character literal must be 1"
             ));
-            self.errors.push(("Length of character literal must be 1".to_string(), None))
         }
 
         self.tokens.push(Token(self.token_info.len()));

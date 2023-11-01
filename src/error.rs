@@ -5,7 +5,12 @@ pub(crate) use crate::abort;
 use crate::{Location};
 
 lazy_static! {
-    static ref VERBOSE: bool = match std::env::var("NULL_VERBOSE") {
+    static ref ERROR_HELP: bool = match std::env::var("NULL_ERROR_HELP") {
+        Ok(val) => val == "1",
+        Err(_) => true,
+    };
+
+    static ref ERROR_CONTEXT: bool = match std::env::var("NULL_ERROR_CONTEXT") {
         Ok(val) => val == "1",
         Err(_) => true,
     };
@@ -45,7 +50,7 @@ macro_rules! err_lvl {
 #[macro_export]
 macro_rules! err_path {
     ($lvl: ident, path=$path: expr, $($rest: tt)*) => {
-        $crate::err_loc!($lvl, path=$path, $($rest)*)
+        $crate::err_loc!($lvl, path=$path.clone(), $($rest)*)
     };
     ($lvl: ident, $($rest: tt)*) => {
         $crate::err_loc!($lvl, path=None, $($rest)*)
@@ -55,28 +60,29 @@ macro_rules! err_path {
 #[macro_export]
 macro_rules! err_loc {
     ($lvl: ident, path=$path: expr, span=$loc: expr, $($rest: tt)*) => {
-        $crate::err_visual!($lvl, path=None, span=Some($loc), $($rest)*)
+        $crate::err_visual!($lvl, path=$path, span=Some($loc), $($rest)*)
     };
     ($lvl: ident, path=$path: expr, $($rest: tt)*) => {
-        $crate::err_visual!($lvl, path=None, span=None, $($rest)*)
+        $crate::err_visual!($lvl, path=$path, span=None, $($rest)*)
     };
 }
 
 #[macro_export]
 macro_rules! err_visual {
     ($lvl: ident, path=$path: expr, span=$loc: expr, visual=$visual: expr, $($rest: tt)*) => {
-        $crate::err_help!($lvl, path=None, span=$loc, visual=$visual, $($rest)*)
+        $crate::err_help!($lvl, path=$path, span=$loc, visual=$visual, $($rest)*)
     };
     ($lvl: ident, path=$path: expr, span=$loc: expr, $($rest: tt)*) => {
-        $crate::err_help!($lvl, path=None, span=$loc, visual=$crate::error::ErrorVisualCommand::default(), $($rest)*)
+        $crate::err_help!($lvl, path=$path, span=$loc, visual=$crate::error::ErrorCommand::Invalid, $($rest)*)
     };
 }
 
 /// Print error to stderr and continue
 #[macro_export]
 macro_rules! err_help {
-    ($lvl: ident, path=$path: expr, span=$loc: expr, visual=$visual: expr, $msg: expr) => {
-        $crate::error::Error::new($crate::error::ErrorLevel::$lvl,
+    ($lvl: ident, path=$path: expr, span=$loc: expr, visual=$visual: expr, $msg: expr $(,)?) => {
+        $crate::error::Error::new(
+            $crate::error::ErrorLevel::$lvl,
             $loc.clone(),
             $path,
             $visual,
@@ -84,7 +90,7 @@ macro_rules! err_help {
             Vec::new(),
         )
     };
-    ($lvl: ident, path=$path: expr, span=$loc: expr, visual=$visual: expr, $msg: expr, help=[$($help: expr),*] $(,)*) => {
+    ($lvl: ident, path=$path: expr, span=$loc: expr, visual=$visual: expr, $msg: expr, help=[$($help: expr),*] $(,)?) => {
         $crate::error::Error::new($crate::error::ErrorLevel::$lvl,
             $loc.clone(),
             $path,
@@ -93,7 +99,7 @@ macro_rules! err_help {
             vec![$($help.to_string(),)*],
         )
     };
-    ($lvl: ident, path=$path: expr, span=$loc: expr, visual=$visual: expr, $msg: expr, help=$help: ident) => {
+    ($lvl: ident, path=$path: expr, span=$loc: expr, visual=$visual: expr, $msg: expr, help=$help: ident $(,)?) => {
         $crate::error::Error::new(
             $crate::error::ErrorLevel::$lvl,
             $loc.clone(),
@@ -113,10 +119,11 @@ pub enum ErrorType {
 }
 
 #[derive(Debug, Clone, Default)]
-pub enum ErrorVisualCommand {
+pub enum ErrorCommand {
     #[default]
     Invalid,
     Replace(String),
+    Insert(usize, String),
 }
 
 impl Display for ErrorType {
@@ -147,7 +154,7 @@ impl Display for ErrorLevel {
 #[derive(Debug, Clone)]
 pub struct Error {
     pub level: ErrorLevel,
-    pub visual: ErrorVisualCommand,
+    pub visual: ErrorCommand,
     pub location: Option<Location>,
     pub message: String,
     pub help: Vec<String>,
@@ -159,7 +166,7 @@ impl Error {
         level: ErrorLevel,
         location: Option<Location>,
         file: Option<String>,
-        visual: ErrorVisualCommand,
+        visual: ErrorCommand,
         message: T,
         help: Vec<String>,
     ) -> Error {
@@ -177,7 +184,7 @@ impl Error {
         write!(f, "{}:{}{} \x1b[1m{}\x1b[22m",
                self.level,
                match &self.file {
-                   Some(path) => format!("{}", path),
+                   Some(path) => path.clone(),
                    None => "\x1b[3;38;5;246m%source%\x1b[39m".to_string(),
                },
                match &self.location {
@@ -211,7 +218,7 @@ impl Error {
 
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if *VERBOSE {
+        if *ERROR_HELP {
             self.verbose(f)
         } else {
             self.compact(f)
@@ -221,14 +228,57 @@ impl Display for Error {
 
 impl std::error::Error for Error {}
 
-pub struct Errors(pub Vec<Error>);
-
-impl Errors {
-    pub fn render(&self, source: &[char]) {
-        for error in &self.0 {
+pub struct Errors<'a>(pub &'a Vec<Error>);
+const CONTEXT: usize = 10;
+impl<'a> Errors<'a> {
+    pub fn render(&'a self, source: &'a [char]) {
+        for error in self.0 {
             eprint!("{}", error);
-            if let Some(location) = error.location.as_ref() {
-                eprint!("\n  |\n{} | \x1b[31m{}\x1b[39m\n  |", location.line, source[location.span.start()..location.span.end()].iter().collect::<String>());
+            if *ERROR_CONTEXT {
+                if let Some(location) = error.location.as_ref() {
+                    let (before, after) = {
+                        let mut before = location.span.start();
+                        loop {
+                            if before == 0 ||  source[before - 1] == '\n' || location.span.start() - before >= CONTEXT {
+                                break;
+                            } else {
+                                before -= 1;
+                            }
+                        }
+
+                        let mut after = location.span.end();
+                        loop {
+                            if after >= source.len()-1 || source[after + 1] == '\n' || after - location.span.end() >= CONTEXT {
+                                break;
+                            } else {
+                                after += 1;
+                            }
+                        }
+                        (before, after)
+                    };
+                    let markup = match &error.visual {
+                        ErrorCommand::Invalid => {
+                            format!("\x1b[31m{}\x1b[39m", source[location.span.start()..location.span.end()].iter().collect::<String>())
+                        },
+                        ErrorCommand::Replace(s) => {
+                            format!("\x1b[33m{}\x1b[39m", s)
+                        },
+                        ErrorCommand::Insert(i, s) => {
+                            format!("{}\x1b[32m{}\x1b[39m{}",
+                                    source[location.span.start()..location.span.start() + i].iter().collect::<String>(),
+                                    s,
+                                    source[location.span.start() + i..location.span.end()].iter().collect::<String>()
+                            )
+                        }
+                    };
+                    eprint!(
+                        "\n  |\n{} | {}{}{}\n  |",
+                        location.line,
+                        source[before..location.span.start()].iter().collect::<String>(),
+                        markup,
+                        source[location.span.end()..after].iter().collect::<String>(),
+                    );
+                }
             }
             eprintln!();
         }

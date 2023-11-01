@@ -46,47 +46,13 @@ impl Display for NASM {
         let mut parts = Vec::new();
         let mut prev: &Node = &Node::Section(Span::call_site(), "".to_string());
 
-        let longest_label = self
-            .nodes
-            .iter()
-            .filter_map(|n| match n {
-                Node::Label(_, v) => Some(v.len() + 2),
-                _ => None,
-            })
-            .max()
-            .unwrap_or(0);
-
-        let mut longest_instruction: usize = self
-            .nodes
-            .iter()
-            .filter_map(|n| match n {
-                Node::Instruction(_, v) => Some(v.len()),
-                _ => None,
-            })
-            .max()
-            .unwrap_or(4);
-
-        if longest_instruction < 7 {
-            longest_instruction = 7;
-        }
-
-        let inst_width = |length: usize| {
-            (0..longest_instruction - length)
-                .map(|_| ' ')
-                .collect::<String>()
-        };
-        let label_width =
-            |length: usize| (0..longest_label - length).map(|_| ' ').collect::<String>();
-
         for node in self.nodes.iter() {
             match node {
                 Node::Instruction(inst, prms) => {
                     if let Node::Instruction(_, _) = prev {
                         parts.push(format!(
-                            "{}{}{} {}\n",
-                            label_width(0),
+                            "{} {}",
                             inst,
-                            inst_width(inst.to_string().len()),
                             prms.iter()
                                 .map(|e| e.to_string())
                                 .collect::<Vec<String>>()
@@ -94,9 +60,8 @@ impl Display for NASM {
                         ));
                     } else {
                         parts.push(format!(
-                            "{}{} {}\n",
+                            "{} {}",
                             inst,
-                            inst_width(inst.to_string().len()),
                             prms.iter()
                                 .map(|e| e.to_string())
                                 .collect::<Vec<String>>()
@@ -112,31 +77,27 @@ impl Display for NASM {
                     };
 
                     parts.push(format!(
-                        "{}{}{} {}\n",
-                        label_width(0),
+                        "{} {}",
                         name,
-                        inst_width(name.len()),
                         prm
                     ));
                 }
                 Node::Section(_, name) => {
                     parts.push(format!(
-                        "{}section{} .{}\n",
-                        label_width(0),
-                        inst_width(7),
+                        "section .{}",
                         name,
                     ));
                 }
                 Node::Label(_, val) => {
-                    parts.push(format!("{}: {}", val, label_width(val.len() + 2)));
+                    parts.push(format!("{}:", val));
                 },
                 Node::Injection(_, _) => {
-                    parts.push("\n{}\n".to_string());
+                    parts.push("{}".to_string());
                 }
             }
             prev = node;
         }
-        write!(f, "{}", parts.join(""))
+        write!(f, "{}", parts.join("\n"))
     }
 }
 
@@ -248,12 +209,8 @@ impl NASM {
                                 break;
                             }
 
-                            if current.is_none() {
-                                current = Some(Expr(span.clone(), Vec::new()))
-                            }
-
                             let next = tokens.next().unwrap().clone();
-                            current.as_mut().unwrap().1.push(next);
+                            params.push(Expr(span.clone(), vec![next]));
                         }
                         Token::Symbol(span, s) => match s {
                             Symbol::Comma(_) => {
@@ -277,6 +234,13 @@ impl NASM {
                                     .push(tokens.next().unwrap().clone());
                             }
                         },
+                        Token::Injection(_, _)  if current.is_none() => {
+                            if inst.verify(&params){
+                                break;
+                            } else {
+                                params.push(Expr(span.clone(), vec![tokens.next().unwrap().clone()]));
+                            }
+                        }
                         _ => {
                             if current.is_none() {
                                 current = Some(Expr(span.clone(), Vec::new()))

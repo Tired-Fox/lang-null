@@ -5,7 +5,7 @@ pub mod error;
 pub mod lexer;
 pub mod parser;
 
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq, Default)]
 pub struct Span {
     start: usize,
     end: usize,
@@ -37,7 +37,7 @@ impl Debug for Span {
     }
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone, Default)]
 pub struct Location {
     pub line: usize,
     pub column: usize,
@@ -64,4 +64,13 @@ impl Display for Location {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}:{}", self.line, self.column)
     }
+}
+
+pub fn first_positive(sizes: &[usize]) -> usize {
+    for size in sizes.iter() {
+        if *size > 0 {
+            return *size;
+        }
+    }
+    0
 }
