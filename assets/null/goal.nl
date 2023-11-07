@@ -8,12 +8,22 @@
 // any
 // undefined
 
-x: int : 0;
+// Static: static variable: type = undefined
+// Immutable: const variable: type = undefined
+//      variable :: undefined
+// Mutable: let variable: type = undefined
+//      variable := undefined
+
+const x: int = 0
+x : int : 0
 x :: 0
-const x: int = 0;
-x: i32 = 0;
+// Error cannot mutate immutable value
+x = 3
+
+let x: i32 = 0
+x : i32 = 0
 x := 0
-let x: i32 = 0;
+x = 4
 
 /*
     Multiline comment `/* markdown code escapes closing symbols */`
@@ -31,6 +41,12 @@ pub enum Weekday {
     Saturday,
     Sunday,
 }
+
+/*
+    Play with the idea of enums with values
+    or unions. Doesn't make sense to have both since both
+    would be the same thing.
+ */
 
 pub union Option {
     Day: Weekday,
@@ -50,7 +66,7 @@ union_enum :: fn() Error!?String {
     
     // Can mutate value
     let mut x: i32 = 0;
-    let my_option = Option::Day(Weekday::Monday)
+    let my_option = Option { Day: Weekday::Monday }
 }
 
 pub template SayHello {
