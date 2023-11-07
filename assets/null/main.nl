@@ -1,3 +1,3 @@
 main :: fn() {
-    exit(50);
+    exit(69)
 }

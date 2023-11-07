@@ -2,8 +2,9 @@ global __null
 extern ExitProcess
 section .text
 __main:
-
-RET 
+MOV rcx, 69
+CALL ExitProcess
+RET
 __null:
 CALL __main
 MOV rcx, 0

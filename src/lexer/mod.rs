@@ -356,6 +356,7 @@ impl Lexer {
                     }
                 }
             }
+            return;
         }
 
         // Keyword or Identifier

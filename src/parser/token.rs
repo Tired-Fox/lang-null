@@ -1,6 +1,7 @@
 use std::fmt::{Debug};
 use std::iter::Peekable;
 use std::ops::Index;
+use std::slice::Iter;
 use crate::error::Error;
 
 use crate::{err, lexer, Location, Span};
@@ -16,6 +17,7 @@ pub trait Parse:
 pub type ParseResult<T> = Result<T, Error>;
 
 pub enum Token {
+    None,
     Call(Call),
     Ident(Ident),
     Literal(Literal),
@@ -26,6 +28,7 @@ pub enum Token {
 impl Token {
     pub fn location(&self) -> Location {
         match self {
+            Token::None => Location::default(),
             Token::Call(call) => call.location(),
             Token::Ident(ident) => ident.location(),
             Token::Literal(literal) => literal.location(),
@@ -38,6 +41,7 @@ impl Token {
 impl Debug for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Token::None => {Ok(())},
             Token::Call(call) => write!(f, "{:?}", call),
             Token::Ident(ident) => write!(f, "{:?}", ident),
             Token::Literal(literal) => write!(f, "{:?}", literal),
@@ -219,6 +223,12 @@ impl Block {
 
 #[derive(Debug)]
 pub struct Punctuated<T: Parse, const N: char = ','>(pub Vec<T>, pub Option<Location>);
+
+impl<T: Parse, const N: char> Punctuated<T, N> {
+    pub fn iter(&self) -> Iter<'_, T> {
+        self.0.iter()
+    }
+}
 
 impl<V: Parse, const N: char> Parse for Punctuated<V, N> {
     fn location(&self) -> Location {

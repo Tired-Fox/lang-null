@@ -6,12 +6,13 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use nasm_to_string::nasm;
-use crate::{abort, err};
-use crate::compiler::assembly::ToAssembly;
-use crate::error::{Error, Errors};
 
+use crate::err;
+use crate::compiler::assembly::ToAssembly;
+use crate::compiler::external::Extern;
+use crate::error::{Error, Errors};
 use crate::parser::{Parser, token::{Declaration, Token}};
-use crate::parser::token::{Call, Literal, Parameter};
+use crate::parser::token::{Block, Call, Literal, Parameter, Punctuated};
 
 pub mod external;
 pub mod assembly;
@@ -77,7 +78,6 @@ impl Builder {
             errors: Vec::new(),
 
             chunks: Vec::new(),
-            methods: Vec::new(),
             data: Vec::new(),
         }.compile(name.as_str());
     }
@@ -92,9 +92,57 @@ impl Builder {
             errors: Vec::new(),
 
             chunks: Vec::new(),
-            methods: Vec::new(),
             data: Vec::new(),
         }.compile(name);
+    }
+}
+
+struct Scope<'scope> {
+   methods: HashMap<String, &'scope Declaration>,
+   variables: HashMap<String, &'scope Declaration>,
+}
+
+impl<'scope> Scope<'scope> {
+    fn new() -> Self {
+        Scope {
+            methods: HashMap::new(),
+            variables: HashMap::new(),
+        }
+    }
+
+    fn method(&self, name: &str) -> Option<&'scope Declaration> {
+        self.methods.get(name).copied()
+    }
+
+    fn variable(&self, name: &str) -> Option<&'scope Declaration> {
+        self.variables.get(name).copied()
+    }
+
+    fn add_method(&mut self, name: String, decl: &'scope Declaration) {
+        self.methods.insert(name, decl);
+    }
+
+    fn add_variable(&mut self, name: String, decl: &'scope Declaration) {
+        self.variables.insert(name, decl);
+    }
+}
+
+impl<'scope> From<&'scope Vec<Token>> for Scope<'scope> {
+    fn from(tokens: &'scope Vec<Token>) -> Self {
+        let mut scope = Scope::new();
+        for token in tokens.iter() {
+            if let Token::Decleration(decl) = token {
+                match decl {
+                    Declaration::Function{name, ..} => {
+                        scope.add_method(name.to_string(), decl);
+                    },
+                    Declaration::Variable{name, ..} => {
+                        scope.add_variable(name.to_string(), decl);
+                    }
+                }
+            }
+        }
+        scope
     }
 }
 
@@ -106,7 +154,6 @@ pub struct Compiler {
     errors: Vec<Error>,
     chunks: Vec<String>,
 
-    methods: Vec<String>,
     data: Vec<String>,
 
     // External name to external link
@@ -130,7 +177,6 @@ impl Compiler {
         Compiler {
             parser,
             chunks: Vec::new(),
-            methods: Vec::new(),
             data: Vec::new(),
 
             externals: HashMap::new(),
@@ -141,12 +187,89 @@ impl Compiler {
         }
     }
 
-    fn methods(&self) -> String {
+    fn process_scope(&self, tokens: &Vec<Token>) -> (String, Vec<Extern>) {
+        let scope = Scope::from(tokens);
+        let mut errors = Vec::new();
+        let mut externals = Vec::new();
         let mut result = String::new();
-        for asm in self.methods.iter() {
-            result.push_str(asm.as_str());
+
+        for token in tokens.iter() {
+            match token {
+                Token::Call(call) => {
+                    if let Call::Call { name, params, .. } = call {
+                        if let Some(decl) = scope.method(name.to_string().as_str()) {
+                            todo!("Not yet implemented");
+                            // for param in params {
+                            //
+                            // }
+                        } else if syscall::SYSCALLS.contains(&name.to_string().as_str()) {
+                            match name.to_string().as_str() {
+                                "exit" => {
+                                    if params.len() != 1 {
+                                        errors.push(err!(
+                                            path=self.parser.file(),
+                                            span=token.location(),
+                                            "Invalid number of arguments for syscall",
+                                            help=["Expected 1 argument"]
+                                        ));
+                                        break;
+                                    }
+                                    let code = match params.iter().last().unwrap() {
+                                        Parameter::Literal(Literal::Number { value, .. }) => {
+                                            value.parse::<i32>().unwrap()
+                                        },
+                                        _ => {
+                                            errors.push(err!(
+                                                path=self.parser.file(),
+                                                span=token.location(),
+                                                "Invalid argument for syscall",
+                                                help=["Expected literal"]
+                                            ));
+                                            break
+                                        }
+                                    };
+                                    let (nasm, links) = syscall::exit(code);
+                                    if let Some(externs) = links {
+                                        for external in externs {
+                                            externals.push(external);
+                                        }
+                                    }
+                                    result.push_str(nasm.as_str());
+                                }
+                                _ => { todo!("Syscall not yet implemented {}", name.to_string()) }
+                            }
+                        }
+                    }
+                },
+                Token::Decleration(decl) => {
+                    match decl {
+                        Declaration::Function{name, args, body, ..} => {
+                            if let Some(Block(tokens, _)) = body {
+                                let (nasm, links) = self.process_scope(tokens);
+                                externals.extend(links);
+                                result.push_str(format!("__{}:\n", name.to_string()).as_str());
+                                result.push_str(nasm.as_str());
+                                result.push_str("\nRET");
+                            }
+                        },
+                        Declaration::Variable{name, value, ..} => {
+                            todo!("Not yet implemented");
+                        }
+                    }
+                }
+                _ => errors.push(err!(
+                    path=self.parser.file(),
+                    span=token.location(),
+                    "Only declarations are allowed in the global scope"
+                ))
+            }
         }
-        result
+
+        if !errors.is_empty() {
+            Errors(&self.errors).render(self.parser.source());
+            std::process::exit(1);
+        }
+        (result, externals)
     }
 
     fn assemble(&mut self, name: &str) {
@@ -162,43 +285,16 @@ impl Compiler {
             }
         }
 
-        let global = self.parser.global();
-        if global.get_function("main").is_none() {
+        let global: Scope = Scope::from(&self.parser.tokens);
+        if global.method("main").is_none() {
             panic!("Main function is missing");
         }
 
-        for token in self.parser.tokens.iter() {
-            match token {
-                Token::Decleration(decl) => {
-                    let (asm, ext) = decl.to_asm("");
-                    if let Some(externals) = ext {
-                        for external in externals {
-                            if !self.externals.contains_key(external.name) {
-                                self.externals.insert(external.name.to_string(), external.link.to_string());
-                            }
-                        }
-                    }
-                    match decl {
-                        Declaration::Function{..} => {
-                            self.methods.push(asm);
-                        }
-                        Declaration::Variable{..} => {
-                            self.data.push(asm);
-                        }
-                    }
-                }
-                _ => self.errors.push(err!(
-                    path=self.parser.file(),
-                    span=token.location(),
-                    "Only declarations are allowed in the global scope"
-                ))
-            }
+        let (result, externals) = self.process_scope(&self.parser.tokens);
+        for external in externals {
+            self.externals.insert(external.name.to_string(), external.link.to_string());
         }
-
-        if !self.errors.is_empty() {
-            Errors(&self.errors).render(self.parser.source());
-            std::process::exit(1);
-        }
+        self.chunks.push(result);
 
         // To out file
         fs::write(Target::root("nasm").join(name.to_string() + ".asm"), self.to_string()).expect("Failed to write asm file");
@@ -305,7 +401,7 @@ impl Display for Compiler {
             }
 
             section .text
-            {self.methods()}
+            {self.chunks.join("\n")}
 
             __null:
                 ; "TODO: Setup for argv to pass to main" ;

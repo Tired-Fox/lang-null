@@ -1,7 +1,6 @@
 extern crate null;
 
-use nasm_to_string::nasm;
-use null::compiler::{Compiler, syscall};
+use null::compiler::{Compiler};
 use null::error::Errors;
 
 use null::lexer::Lexer;
@@ -17,9 +16,8 @@ fn compile() {
 
 const SOURCE: &'static str = r#"
 main :: fn(exit_code: i32) {
+    exit(exit_code)
 }
-main(12);
-exit(12);
 "#;
 
 fn parse() {
@@ -29,9 +27,12 @@ fn parse() {
 
 fn lex() {
     // let mut lexer = Lexer::source(SOURCE);
-    let mut lexer = Lexer::with_path("assets/null/main.nl");
+    let mut lexer = Lexer::with_source(SOURCE);
     lexer.lex();
 
+    for token in lexer.tokens.iter() {
+        println!("{:?}", lexer.get_info(token));
+    }
     Errors(lexer.errors()).render(lexer.source());
 }
 

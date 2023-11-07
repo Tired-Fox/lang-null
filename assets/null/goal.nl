@@ -9,8 +9,10 @@
 // undefined
 
 x: int : 0;
+x :: 0
 const x: int = 0;
 x: i32 = 0;
+x := 0
 let x: i32 = 0;
 
 /*
@@ -73,7 +75,7 @@ struct Data {
 
 extend Data with SayHello {
     say_hello::fn(&self) {
-        let suffix = '!';
+        let suffix = '!'
         print("Hello, {}{}", self.name, suffix)
     }
 }
