@@ -1,4 +1,4 @@
-; Sample linux x86_64 assembly for printing `Hello, world!`
+; Sample linux x86_64 _assembly for printing `Hello, world!`
 global _start
 
 section .data:

@@ -4,7 +4,7 @@ section .text
 __main:
 MOV rcx, 69
 CALL ExitProcess
-RET
+RET 
 __null:
 CALL __main
 MOV rcx, 0

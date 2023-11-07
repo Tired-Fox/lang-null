@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fmt::Debug;
 use std::iter::Peekable;
 
@@ -9,13 +8,6 @@ use crate::parser::token::{Argument, Block, Parameter, Parse, Token};
 
 pub mod token;
 mod built_in;
-
-// pub tokens: Vec<Token>,
-// pub token_info: Vec<TokenInfo>,
-// pub literal_numbers: Vec<String>,
-// pub literal_strings: Vec<String>,
-// pub errors: Vec<ErrorInfo>,
-// pub identifiers: Vec<String>,
 
 pub struct Parser {
     lexer: Lexer,

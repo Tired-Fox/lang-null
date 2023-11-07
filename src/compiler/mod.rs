@@ -7,12 +7,10 @@ use std::process::{Command, Stdio};
 
 use nasm_to_string::nasm;
 
-use crate::err;
 use crate::compiler::assembly::ToAssembly;
 use crate::compiler::external::Extern;
-use crate::error::{Error, Errors};
+use crate::error::Error;
 use crate::parser::{Parser, token::{Declaration, Token}};
-use crate::parser::token::{Block, Call, Literal, Parameter, Punctuated};
 
 pub mod external;
 pub mod assembly;
@@ -97,7 +95,7 @@ impl Builder {
     }
 }
 
-struct Scope<'scope> {
+pub struct Scope<'scope> {
    methods: HashMap<String, &'scope Declaration>,
    variables: HashMap<String, &'scope Declaration>,
 }
@@ -108,6 +106,26 @@ impl<'scope> Scope<'scope> {
             methods: HashMap::new(),
             variables: HashMap::new(),
         }
+    }
+
+    fn inherit(&mut self, scope: &'scope Scope<'scope>) {
+        let mut methods: HashMap<String, &'scope Declaration> = HashMap::new();
+        let mut variables: HashMap<String, &'scope Declaration> = HashMap::new();
+
+        for (name, decl) in scope.variables.iter() {
+            variables.insert(name.to_string(), decl);
+        }
+        for (name, decl) in scope.methods.iter() {
+            methods.insert(name.to_string(), decl);
+        }
+        for (name, decl) in self.variables.iter() {
+            variables.insert(name.to_string(), decl);
+        }
+        for (name, decl) in self.methods.iter() {
+            methods.insert(name.to_string(), decl);
+        }
+        self.methods = methods;
+        self.variables = variables;
     }
 
     fn method(&self, name: &str) -> Option<&'scope Declaration> {
@@ -187,88 +205,19 @@ impl Compiler {
         }
     }
 
-    fn process_scope(&self, tokens: &Vec<Token>) -> (String, Vec<Extern>) {
+    fn process(&self, tokens: &Vec<Token>) -> (String, Vec<Extern>) {
         let scope = Scope::from(tokens);
-        let mut errors = Vec::new();
         let mut externals = Vec::new();
         let mut result = String::new();
 
         for token in tokens.iter() {
-            match token {
-                Token::Call(call) => {
-                    if let Call::Call { name, params, .. } = call {
-                        if let Some(decl) = scope.method(name.to_string().as_str()) {
-                            todo!("Not yet implemented");
-                            // for param in params {
-                            //
-                            // }
-                        } else if syscall::SYSCALLS.contains(&name.to_string().as_str()) {
-                            match name.to_string().as_str() {
-                                "exit" => {
-                                    if params.len() != 1 {
-                                        errors.push(err!(
-                                            path=self.parser.file(),
-                                            span=token.location(),
-                                            "Invalid number of arguments for syscall",
-                                            help=["Expected 1 argument"]
-                                        ));
-                                        break;
-                                    }
-                                    let code = match params.iter().last().unwrap() {
-                                        Parameter::Literal(Literal::Number { value, .. }) => {
-                                            value.parse::<i32>().unwrap()
-                                        },
-                                        _ => {
-                                            errors.push(err!(
-                                                path=self.parser.file(),
-                                                span=token.location(),
-                                                "Invalid argument for syscall",
-                                                help=["Expected literal"]
-                                            ));
-                                            break
-                                        }
-                                    };
-                                    let (nasm, links) = syscall::exit(code);
-                                    if let Some(externs) = links {
-                                        for external in externs {
-                                            externals.push(external);
-                                        }
-                                    }
-                                    result.push_str(nasm.as_str());
-                                }
-                                _ => { todo!("Syscall not yet implemented {}", name.to_string()) }
-                            }
-                        }
-                    }
-                },
-                Token::Decleration(decl) => {
-                    match decl {
-                        Declaration::Function{name, args, body, ..} => {
-                            if let Some(Block(tokens, _)) = body {
-                                let (nasm, links) = self.process_scope(tokens);
-                                externals.extend(links);
-                                result.push_str(format!("__{}:\n", name.to_string()).as_str());
-                                result.push_str(nasm.as_str());
-                                result.push_str("\nRET");
-                            }
-                        },
-                        Declaration::Variable{name, value, ..} => {
-                            todo!("Not yet implemented");
-                        }
-                    }
-                }
-                _ => errors.push(err!(
-                    path=self.parser.file(),
-                    span=token.location(),
-                    "Only declarations are allowed in the global scope"
-                ))
+            let (nasm, externs) = token.to_asm("", &scope);
+            if let Some(externs) = externs {
+                externals.extend(externs);
             }
+            result.push_str(nasm.as_str());
         }
 
-        if !errors.is_empty() {
-            Errors(&self.errors).render(self.parser.source());
-            std::process::exit(1);
-        }
         (result, externals)
     }
 
@@ -290,7 +239,7 @@ impl Compiler {
             panic!("Main function is missing");
         }
 
-        let (result, externals) = self.process_scope(&self.parser.tokens);
+        let (result, externals) = self.process(&self.parser.tokens);
         for external in externals {
             self.externals.insert(external.name.to_string(), external.link.to_string());
         }
